@@ -8,7 +8,7 @@ import json
 
 SEARCH_URL = (
     "https://www.finn.no/realestate/homes/search.html"
-    "?location=1.20016.20318&property_type=3"
+    "?location=1.20016.20318&is_new_property=false"
     "&sort=PUBLISHED_DESC"
 )
 
@@ -95,7 +95,7 @@ def fetch_all_listings(page):
 
         links = page.eval_on_selector_all(
             'article a[href*="/realestate/"]',
-            """elements => elements.map(el => el.href).filter(h => h.includes('/ad.html') || h.includes('/newbuildings/'))"""
+            """elements => elements.map(el => el.href).filter(h => h.includes('/ad.html'))"""
         )
 
         batch = []
