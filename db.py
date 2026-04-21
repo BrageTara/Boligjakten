@@ -143,3 +143,22 @@ def get_sold_listings():
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# PSEUDOCODE:
+# 1. Read all rows from omrade_stats
+# 2. Apply sort: navn_asc (default), snitt_desc, antall_desc
+# 3. Return list of dicts
+def get_omrade_stats(sort="navn_asc"):
+    sort_map = {
+        "navn_asc":    "omrade ASC",
+        "snitt_desc":  "snitt_kvm_pris DESC",
+        "antall_desc": "(antall_aktive + antall_solgte) DESC",
+    }
+    order = sort_map.get(sort, "omrade ASC")
+    conn = get_db()
+    rows = conn.execute(
+        f"SELECT * FROM omrade_stats ORDER BY {order}"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

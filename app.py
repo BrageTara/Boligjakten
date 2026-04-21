@@ -1,7 +1,7 @@
 import os
 from datetime import date
 from flask import Flask, render_template, request, abort
-from db import get_stats, get_listings, get_listing, get_price_history, get_sold_listings
+from db import get_stats, get_listings, get_listing, get_price_history, get_sold_listings, get_omrade_stats
 
 
 # PSEUDOCODE:
@@ -85,6 +85,20 @@ def create_app(config=None):
     def prishistorikk():
         listings = get_listings({"flagg": ["Prisnedsatt"]})
         return render_template("prishistorikk.html", listings=listings)
+
+    # PSEUDOCODE:
+    # 1. Read sort param (default: navn_asc)
+    # 2. Fetch all omrade_stats rows sorted accordingly
+    # 3. Calculate global min/max kvm_pris across all areas (for spredning bar)
+    # 4. Render omrader.html
+    @app.route("/områder")
+    def omrader():
+        sort = request.args.get("sort", "navn_asc")
+        stats = get_omrade_stats(sort)
+        global_min = min((r["min_kvm_pris"] for r in stats if r["min_kvm_pris"]), default=0)
+        global_max = max((r["max_kvm_pris"] for r in stats if r["max_kvm_pris"]), default=1)
+        return render_template("omrader.html", stats=stats, sort=sort,
+                               global_min=global_min, global_max=global_max)
 
     @app.errorhandler(404)
     def not_found(e):

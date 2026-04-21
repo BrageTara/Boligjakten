@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Områder — Boligjakten{% endblock %}
+
+{% block content %}
+<div class="detail-container" style="max-width: 900px;">
+
+  <div class="page-title">Områdestatistikk</div>
+
+  {% if not stats %}
+    <p style="color: #64748b;">Ingen data ennå — kjør scraperen først.</p>
+  {% else %}
+
+    <div class="results-bar">
+      <span>{{ stats | length }} områder</span>
+      <form method="get" action="/områder" style="display:inline;">
+        <select name="sort" class="sort-select" onchange="this.form.submit()">
+          <option value="navn_asc"    {% if sort == 'navn_asc'    %}selected{% endif %}>Alfabetisk</option>
+          <option value="snitt_desc"  {% if sort == 'snitt_desc'  %}selected{% endif %}>Høyest snitt kr/m²</option>
+          <option value="antall_desc" {% if sort == 'antall_desc' %}selected{% endif %}>Flest annonser</option>
+        </select>
+      </form>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Område</th>
+          <th style="text-align:right;">Aktive</th>
+          <th style="text-align:right;">Solgte (12 mnd)</th>
+          <th style="text-align:right;">Min kr/m²</th>
+          <th style="text-align:right;">Snitt kr/m²</th>
+          <th style="text-align:right;">Maks kr/m²</th>
+          <th style="width:140px;">Spredning</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set range_span = (global_max - global_min) if global_max > global_min else 1 %}
+        {% for row in stats %}
+        <tr>
+          <td style="font-weight:600;">{{ row.omrade }}</td>
+          <td style="text-align:right;">{{ row.antall_aktive }}</td>
+          <td style="text-align:right;">{{ row.antall_solgte }}</td>
+          <td style="text-align:right;">{{ "{:,.0f}".format(row.min_kvm_pris).replace(",", " ") if row.min_kvm_pris else "—" }}</td>
+          <td style="text-align:right; font-weight:600; color:#1d4ed8;">{{ "{:,.0f}".format(row.snitt_kvm_pris).replace(",", " ") if row.snitt_kvm_pris else "—" }}</td>
+          <td style="text-align:right;">{{ "{:,.0f}".format(row.max_kvm_pris).replace(",", " ") if row.max_kvm_pris else "—" }}</td>
+          <td>
+            {% if row.min_kvm_pris and row.max_kvm_pris %}
+              {% set bar_left = ((row.min_kvm_pris - global_min) / range_span * 100) | round(1) %}
+              {% set bar_width = ((row.max_kvm_pris - row.min_kvm_pris) / range_span * 100) | round(1) %}
+              <div class="spread-track">
+                <div class="spread-bar" style="left:{{ bar_left }}%; width:{{ [bar_width, 4] | max }}%;"></div>
+              </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <p style="font-size:11px; color:#94a3b8; margin-top:12px;">
+      Spredningsbaren viser hvor områdets prisrange (min→maks) ligger relativt til alle områder samlet.
+    </p>
+
+  {% endif %}
+</div>
+{% endblock %}

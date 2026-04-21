@@ -80,3 +80,7 @@ tr:hover td { background: #f8fafc; }
 /* HTMX loading indicator */
 .htmx-indicator { display: none; }
 .htmx-request .htmx-indicator { display: inline; }
+
+/* Spredning bar (omrader page) */
+.spread-track { position: relative; height: 10px; background: #e2e8f0; border-radius: 5px; }
+.spread-bar { position: absolute; top: 0; height: 100%; background: #3b82f6; border-radius: 5px; min-width: 4%; }
