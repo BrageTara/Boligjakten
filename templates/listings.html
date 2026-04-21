@@ -1,0 +1,38 @@
+{% if listings %}
+<p style="margin-bottom:10px;font-size:12px;color:#64748b;">
+  Viser <strong>{{ listings|length }}</strong> annonser
+</p>
+{% for l in listings %}
+  {% set is_new = l.siste_sett == today_str %}
+  <a href="{{ url_for('detalj', finnkode=l.finnkode) }}" style="display:block;">
+    <div class="listing-card {{ 'is-new' if is_new }}">
+      <div class="listing-header">
+        <span class="listing-address">{{ l.adresse or l.finnkode }}</span>
+        <span class="listing-price">
+          {% if l.prisantydning %}{{ "{:,.0f}".format(l.prisantydning).replace(",", " ") }} kr{% else %}—{% endif %}
+        </span>
+      </div>
+      <div class="listing-meta">
+        {% if l.omrade %}<span>📍 {{ l.omrade }}</span>{% endif %}
+        {% if l.bra %}<span>📐 {{ l.bra }} m²</span>{% endif %}
+        {% if l.rom %}<span>🛏 {{ l.rom }} rom</span>{% endif %}
+        <span>📅 {{ l.dager_ute or 0 }} dager</span>
+      </div>
+      <div class="listing-flags">
+        {% if is_new %}<span class="badge badge-new">NY</span>{% endif %}
+        {% if l.flagg %}
+          {% for flag in l.flagg.split(' | ') %}
+            {% if flag == 'Prisnedsatt' %}<span class="badge badge-prisnedsatt">📉 {{ flag }}</span>
+            {% elif '14+' in flag %}<span class="badge badge-dager">⏱ {{ flag }}</span>
+            {% elif 'visninger' in flag %}<span class="badge badge-visninger">👁 {{ flag }}</span>
+            {% elif 'fellesgjeld' in flag %}<span class="badge badge-fellesgjeld">💰 {{ flag }}</span>
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+  </a>
+{% endfor %}
+{% else %}
+<p style="color:#94a3b8;text-align:center;padding:40px 0;">Ingen annonser matcher filtrene.</p>
+{% endif %}

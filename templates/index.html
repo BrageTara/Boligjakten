@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Annonser — Boligjakten{% endblock %}
+{% block content %}
+
+<div class="stats-bar">
+  <span>📋 <strong>{{ stats.total }}</strong> annonser totalt</span>
+  <span>🆕 <strong>{{ stats.nye_i_dag }}</strong> nye i dag</span>
+  <span>🏷 <strong>{{ stats.flaggede }}</strong> flaggede</span>
+  <span>📉 <strong>{{ stats.prisnedsatte }}</strong> prisnedsatt</span>
+</div>
+
+<div class="layout">
+
+  <!-- Sidebar with filters — HTMX posts the form on any change -->
+  <aside class="sidebar">
+    <h3>Filtre</h3>
+    <form id="filter-form"
+          hx-post="{{ url_for('annonser') }}"
+          hx-target="#listing-results"
+          hx-trigger="change, input delay:400ms">
+
+      <div class="filter-group">
+        <div class="filter-label">Pris (kr)</div>
+        <div class="filter-row">
+          <input type="number" name="pris_min" placeholder="Min" step="50000">
+          <span>–</span>
+          <input type="number" name="pris_maks" placeholder="Maks" step="50000">
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Område</div>
+        <select name="omrade">
+          <option value="">Alle områder</option>
+          {% for o in omrader %}
+            <option value="{{ o }}">{{ o }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Størrelse (m²)</div>
+        <div class="filter-row">
+          <input type="number" name="bra_min" placeholder="Min">
+          <span>–</span>
+          <input type="number" name="bra_maks" placeholder="Maks">
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Antall rom</div>
+        <div class="btn-group">
+          {% for val, label in [('alle','Alle'),('1','1'),('2','2'),('3+','3+')] %}
+            <button type="button"
+                    class="{{ 'active' if loop.first }}"
+                    onclick="setRom(this, '{{ val }}')">{{ label }}</button>
+          {% endfor %}
+          <input type="hidden" name="rom" value="alle" id="rom-value">
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Flagg</div>
+        <div class="checkbox-list">
+          {% for flag in ['Prisnedsatt','14+ dager','2+ visninger','Høy fellesgjeld'] %}
+            <label>
+              <input type="checkbox" name="flagg" value="{{ flag }}"> {{ flag }}
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Status</div>
+        <div class="checkbox-list">
+          <label><input type="checkbox" name="status" value="Aktiv" checked> Aktiv</label>
+          <label><input type="checkbox" name="status" value="Solgt"> Solgt</label>
+          <label><input type="checkbox" name="status" value="Trukket"> Trukket</label>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Sorter etter</div>
+        <select name="sort">
+          <option value="siste_sett_desc">Nyeste først</option>
+          <option value="prisantydning_asc">Pris stigende</option>
+          <option value="prisantydning_desc">Pris synkende</option>
+          <option value="dager_ute_desc">Lengst ute</option>
+        </select>
+      </div>
+
+    </form>
+    <button class="btn-reset" onclick="resetFilters()">Nullstill filtre</button>
+  </aside>
+
+  <!-- Listing area — HTMX swaps this div on filter change -->
+  <main class="main">
+    <div id="listing-results">
+      {% include "listings.html" %}
+    </div>
+  </main>
+
+</div>
+
+<script>
+function setRom(btn, val) {
+  document.querySelectorAll('.btn-group button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('rom-value').value = val;
+  htmx.trigger('#filter-form', 'change');
+}
+
+function resetFilters() {
+  document.getElementById('filter-form').reset();
+  document.querySelectorAll('.btn-group button').forEach((b, i) => {
+    b.classList.toggle('active', i === 0);
+  });
+  document.getElementById('rom-value').value = 'alle';
+  htmx.trigger('#filter-form', 'change');
+}
+</script>
+{% endblock %}
