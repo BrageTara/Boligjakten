@@ -64,6 +64,12 @@ def accept_cookies(page):
         pass
 
 
+# PSEUDOCODE:
+# 1. Loop through search result pages until a page times out or returns no new listings
+# 2. On each page, extract all real estate ad URLs matching /realestate/
+# 3. For each URL, extract finnkode and detect er_nybygg (1 if /newbuildings/ in URL, else 0)
+# 4. Skip duplicates (tracked via seen set)
+# 5. Return list of dicts: {finnkode, url, er_nybygg}
 def fetch_all_listings(page):
     """Henter alle finnkoder fra søkeresultatsidene med Playwright."""
     all_listings = []
@@ -107,6 +113,7 @@ def fetch_all_listings(page):
                 finnkode = m.group(1)
                 if finnkode not in seen:
                     seen.add(finnkode)
+                    # Detect boligtype: Finn.no uses /newbuildings/ for nybygg, /homes/ for brukt
                     er_nybygg = 1 if "/newbuildings/" in href else 0
                     batch.append({"finnkode": finnkode, "url": href, "er_nybygg": er_nybygg})
 
