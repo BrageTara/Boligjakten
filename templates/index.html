@@ -89,6 +89,17 @@
         </select>
       </div>
 
+      <div class="filter-group">
+        <div class="filter-label">Boligtype</div>
+        <div class="btn-group">
+          <button type="button" class="active" id="btn-brukt"
+                  onclick="toggleBoligtype(this, '0')">Brukt</button>
+          <button type="button" id="btn-nybygg"
+                  onclick="toggleBoligtype(this, '1')">Nybygg</button>
+        </div>
+        <input type="hidden" name="er_nybygg" value="0" id="er-nybygg-0">
+      </div>
+
     </form>
     <button class="btn-reset" onclick="resetFilters()">Nullstill filtre</button>
   </aside>
@@ -116,6 +127,35 @@ function resetFilters() {
     b.classList.toggle('active', i === 0);
   });
   document.getElementById('rom-value').value = 'alle';
+  // Reset boligtype — Brukt active, Nybygg inactive
+  document.getElementById('btn-brukt').classList.add('active');
+  document.getElementById('btn-nybygg').classList.remove('active');
+  const nyInput = document.getElementById('er-nybygg-1');
+  if (nyInput) nyInput.remove();
+  if (!document.getElementById('er-nybygg-0')) {
+    const input = document.createElement('input');
+    input.type = 'hidden'; input.name = 'er_nybygg'; input.value = '0';
+    input.id = 'er-nybygg-0';
+    document.getElementById('filter-form').appendChild(input);
+  }
+  htmx.trigger('#filter-form', 'change');
+}
+
+function toggleBoligtype(btn, val) {
+  btn.classList.toggle('active');
+  const existingInput = document.getElementById('er-nybygg-' + val);
+  if (btn.classList.contains('active')) {
+    if (!existingInput) {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'er_nybygg';
+      input.value = val;
+      input.id = 'er-nybygg-' + val;
+      document.getElementById('filter-form').appendChild(input);
+    }
+  } else {
+    if (existingInput) existingInput.remove();
+  }
   htmx.trigger('#filter-form', 'change');
 }
 </script>
