@@ -1,20 +1,48 @@
 <div class="histogram-wrap">
-  <div class="histogram-bars">
+  <div class="histogram-bars" id="hist-bars-{{ omrade | replace(' ', '-') }}">
     {% for bin in bins %}
-      {% set total = bin.aktive + bin.solgte %}
+      {% set total = bin.aktive + bin.solgte + bin.get('ny_aktive', 0) + bin.get('ny_solgte', 0) %}
       {% set pct = (total / max_count * 100) | round(1) %}
-      {% set aktive_pct = (bin.aktive / total * 100) | round(1) if total else 0 %}
+      {% set a_pct  = (bin.aktive / total * 100)                   | round(1) if total else 0 %}
+      {% set s_pct  = (bin.solgte / total * 100)                   | round(1) if total else 0 %}
+      {% set na_pct = (bin.get('ny_aktive', 0) / total * 100)      | round(1) if total else 0 %}
+      {% set ns_pct = (bin.get('ny_solgte', 0) / total * 100)      | round(1) if total else 0 %}
       <div class="hist-col">
         <div class="hist-bar-wrap" style="height:{{ pct }}%;">
-          <div class="hist-segment hist-aktiv" style="height:{{ aktive_pct }}%;"></div>
-          <div class="hist-segment hist-solgt" style="height:{{ 100 - aktive_pct }}%;"></div>
+          <div class="hist-segment hist-aktiv"    data-seg="brukt-aktiv"  style="height:{{ a_pct }}%;"></div>
+          <div class="hist-segment hist-solgt"    data-seg="brukt-solgt"  style="height:{{ s_pct }}%;"></div>
+          <div class="hist-segment hist-ny-aktiv" data-seg="ny-aktiv"     style="height:{{ na_pct }}%;"></div>
+          <div class="hist-segment hist-ny-solgt" data-seg="ny-solgt"     style="height:{{ ns_pct }}%;"></div>
         </div>
         <div class="hist-label">{{ bin.label }}</div>
       </div>
     {% endfor %}
   </div>
+
   <div class="hist-legend">
-    <span class="hist-legend-dot hist-aktiv-dot"></span> Aktive
-    <span class="hist-legend-dot hist-solgt-dot" style="margin-left:12px;"></span> Solgte (12 mnd)
+    <span class="hist-legend-item" data-seg="brukt-aktiv" onclick="toggleHistSeg(this)">
+      <span class="hist-legend-dot hist-aktiv-dot"></span> Brukt aktiv
+    </span>
+    <span class="hist-legend-item" data-seg="brukt-solgt" onclick="toggleHistSeg(this)" style="margin-left:12px;">
+      <span class="hist-legend-dot hist-solgt-dot"></span> Brukt solgt
+    </span>
+    <span class="hist-legend-item" data-seg="ny-aktiv" onclick="toggleHistSeg(this)" style="margin-left:12px;">
+      <span class="hist-legend-dot hist-ny-aktiv-dot"></span> Nybygg aktiv
+    </span>
+    <span class="hist-legend-item" data-seg="ny-solgt" onclick="toggleHistSeg(this)" style="margin-left:12px;">
+      <span class="hist-legend-dot hist-ny-solgt-dot"></span> Nybygg solgt
+    </span>
   </div>
 </div>
+
+<script>
+function toggleHistSeg(legendItem) {
+  const seg = legendItem.dataset.seg;
+  const isDisabled = legendItem.classList.toggle('disabled');
+  document.querySelectorAll('[data-seg="' + seg + '"]').forEach(el => {
+    if (el !== legendItem) {
+      el.style.display = isDisabled ? 'none' : '';
+    }
+  });
+}
+</script>
