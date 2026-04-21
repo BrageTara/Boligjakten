@@ -51,6 +51,7 @@ def create_app(config=None):
             "rom":       request.form.get("rom") or None,
             "flagg":     request.form.getlist("flagg"),
             "status":    request.form.getlist("status") or None,
+            "er_nybygg": request.form.getlist("er_nybygg") or None,
         }
         sort = request.form.get("sort", "siste_sett_desc")
         listings = get_listings(filters, sort)
