@@ -33,7 +33,7 @@
         ('Felleskost/mnd',   listing.felleskost|format_kr if listing.felleskost else '—'),
         ('Fellesformue',     listing.fellesformue|format_kr if listing.fellesformue else '—'),
         ('Boligtype',        listing.type or '—'),
-        ('BRA',              (listing.bra ~ ' m²') if listing.bra else '—'),
+        ('BRA',              listing.bra if listing.bra else '—'),
         ('Rom',              listing.rom or '—'),
         ('Etasje',           listing.etasje or '—'),
         ('Første gang sett', listing.forste_sett or '—'),
