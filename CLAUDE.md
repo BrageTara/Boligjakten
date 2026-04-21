@@ -15,12 +15,13 @@ python finn_tracker_db.py
 # Scrape and save to Excel (fallback version)
 python finn_tracker.py
 
-# Start the website (not yet implemented)
+# Start the website
 python app.py
 ```
 
-Python 3.14, Playwright, openpyxl and Flask must be installed. Install the Playwright browser with:
+Install all dependencies with:
 ```bash
+pip install -r requirements.txt
 python -m playwright install chromium
 ```
 
