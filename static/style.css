@@ -99,5 +99,11 @@ tr:hover td { background: #f8fafc; }
 .hist-legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
 .hist-aktiv-dot { background: #3b82f6; }
 .hist-solgt-dot { background: #f97316; }
+.hist-ny-aktiv { background: #4ade80; }
+.hist-ny-solgt { background: #16a34a; }
+.hist-ny-aktiv-dot { background: #4ade80; }
+.hist-ny-solgt-dot { background: #16a34a; }
+.hist-legend-item { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; transition: opacity 0.15s; }
+.hist-legend-item.disabled { opacity: 0.35; }
 .omrade-row { cursor: pointer; }
 .omrade-row:hover td { background: #eff6ff; }
