@@ -53,7 +53,8 @@ def init_db():
             neste_visning   TEXT,
             flagg           TEXT,
             omrade          TEXT,
-            postnummer      TEXT
+            postnummer      TEXT,
+            er_nybygg       INTEGER DEFAULT 0
         )
     """)
 
@@ -95,6 +96,7 @@ def init_db():
             flagg           TEXT,
             omrade          TEXT,
             postnummer      TEXT,
+            er_nybygg       INTEGER DEFAULT 0,
             solgt_dato      DATE,
             arsak           TEXT
         )
@@ -115,6 +117,17 @@ def init_db():
     # Migration: add histogram_json if upgrading from older schema
     try:
         c.execute("ALTER TABLE omrade_stats ADD COLUMN histogram_json TEXT")
+    except Exception:
+        pass  # Column already exists
+
+    # Migration: add er_nybygg if upgrading from older schema
+    try:
+        c.execute("ALTER TABLE annonser ADD COLUMN er_nybygg INTEGER DEFAULT 0")
+    except Exception:
+        pass  # Column already exists
+
+    try:
+        c.execute("ALTER TABLE solgte ADD COLUMN er_nybygg INTEGER DEFAULT 0")
     except Exception:
         pass  # Column already exists
 
@@ -272,13 +285,13 @@ def upsert_listing(conn, finnkode, ad, today, existing=None):
             felleskost, fellesformue, type, bra, rom, etasje,
             forste_sett, siste_sett, dager_ute, antall_visninger,
             pris_ved_start, prisendring, status, url,
-            megler, meglerkontor, neste_visning, flagg, omrade, postnummer
+            megler, meglerkontor, neste_visning, flagg, omrade, postnummer, er_nybygg
         ) VALUES (
             :finnkode, :adresse, :prisantydning, :fellesgjeld, :totalpris, :kvm_pris,
             :felleskost, :fellesformue, :type, :bra, :rom, :etasje,
             :forste_sett, :siste_sett, :dager_ute, :antall_visninger,
             :pris_ved_start, :prisendring, :status, :url,
-            :megler, :meglerkontor, :neste_visning, :flagg, :omrade, :postnummer
+            :megler, :meglerkontor, :neste_visning, :flagg, :omrade, :postnummer, :er_nybygg
         )
         ON CONFLICT(finnkode) DO UPDATE SET
             adresse         = excluded.adresse,
@@ -302,7 +315,8 @@ def upsert_listing(conn, finnkode, ad, today, existing=None):
             neste_visning   = excluded.neste_visning,
             flagg           = excluded.flagg,
             omrade          = excluded.omrade,
-            postnummer      = excluded.postnummer
+            postnummer      = excluded.postnummer,
+            er_nybygg       = excluded.er_nybygg
     """, {
         "finnkode":         finnkode,
         "adresse":          ad.get("adresse"),
@@ -330,6 +344,7 @@ def upsert_listing(conn, finnkode, ad, today, existing=None):
         "flagg":            " | ".join(flagg) if flagg else None,
         "omrade":           ad.get("omrade"),
         "postnummer":       ad.get("postnummer"),
+        "er_nybygg":        ad.get("er_nybygg", 0),
     })
 
 
@@ -355,14 +370,14 @@ def mark_sold(conn, finnkode, today, arsak):
             forste_sett, siste_sett, dager_ute, antall_visninger,
             pris_ved_start, prisendring, status, url,
             megler, meglerkontor, neste_visning, flagg, omrade, postnummer,
-            solgt_dato, arsak
+            er_nybygg, solgt_dato, arsak
         ) VALUES (
             :finnkode, :adresse, :prisantydning, :fellesgjeld, :totalpris, :kvm_pris,
             :felleskost, :fellesformue, :type, :bra, :rom, :etasje,
             :forste_sett, :siste_sett, :dager_ute, :antall_visninger,
             :pris_ved_start, :prisendring, :status, :url,
             :megler, :meglerkontor, :neste_visning, :flagg, :omrade, :postnummer,
-            :solgt_dato, :arsak
+            :er_nybygg, :solgt_dato, :arsak
         )
     """, {**row, "solgt_dato": str(today), "arsak": arsak})
 
@@ -423,6 +438,7 @@ def main():
                 status = "ny" if is_new else "oppdaterer"
                 print(f"{status}  |  {ad.get('adresse', '')}  |  postnr={ad.get('postnummer')}  område={ad.get('omrade')}")
 
+                ad["er_nybygg"] = listing.get("er_nybygg", 0)
                 upsert_listing(conn, finnkode, ad, today, existing.get(finnkode))
                 log_price_history(conn, finnkode, today, ad.get("prisantydning"), ad.get("totalpris"))
                 conn.commit()
