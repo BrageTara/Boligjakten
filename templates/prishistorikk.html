@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Prisnedsatte — Boligjakten{% endblock %}
+{% block content %}
+<div style="padding:20px;">
+  <h2 class="page-title">Prisnedsatte annonser</h2>
+  {% if listings %}
+    <table>
+      <thead>
+        <tr>
+          <th>Adresse</th><th>Område</th>
+          <th>Nåværende pris</th><th>Startpris</th><th>Endring</th><th>Dager ute</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in listings %}
+          <tr>
+            <td><a href="{{ url_for('detalj', finnkode=l.finnkode) }}">{{ l.adresse or l.finnkode }}</a></td>
+            <td>{{ l.omrade or '—' }}</td>
+            <td>{% if l.prisantydning %}{{ "{:,.0f}".format(l.prisantydning).replace(",", " ") }} kr{% else %}—{% endif %}</td>
+            <td>{% if l.pris_ved_start %}{{ "{:,.0f}".format(l.pris_ved_start).replace(",", " ") }} kr{% else %}—{% endif %}</td>
+            <td style="color:#16a34a;">
+              {% if l.prisendring %}{{ "{:,.0f}".format(l.prisendring).replace(",", " ") }} kr{% else %}—{% endif %}
+            </td>
+            <td>{{ l.dager_ute or 0 }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p style="color:#94a3b8;">Ingen prisnedsatte annonser for øyeblikket.</p>
+  {% endif %}
+</div>
+{% endblock %}
