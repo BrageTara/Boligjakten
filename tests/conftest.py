@@ -80,6 +80,16 @@ def seeded_app(tmp_path):
              'https://finn.no/realestate/homes/ad.html?finnkode=999',
              NULL,NULL,NULL,NULL,'Rosenborg','7037',
              '2026-04-20','Solgt');
+        CREATE TABLE omrade_stats (
+            omrade TEXT PRIMARY KEY,
+            antall_aktive INTEGER DEFAULT 0,
+            antall_solgte INTEGER DEFAULT 0,
+            snitt_kvm_pris INTEGER,
+            min_kvm_pris INTEGER,
+            max_kvm_pris INTEGER,
+            histogram_json TEXT,
+            oppdatert DATE
+        );
     """)
     conn.commit()
     conn.close()

@@ -69,5 +69,12 @@
     </table>
   {% endif %}
 
+  {% if histogram %}
+    <h3 style="font-size:14px;font-weight:600;margin-top:24px;margin-bottom:10px;">
+      kr/m²-fordeling — {{ listing.omrade }}
+    </h3>
+    {% include "omrade_histogram.html" %}
+  {% endif %}
+
 </div>
 {% endblock %}

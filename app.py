@@ -1,7 +1,7 @@
 import os
 from datetime import date
 from flask import Flask, render_template, request, abort
-from db import get_stats, get_listings, get_listing, get_price_history, get_sold_listings, get_omrade_stats, get_omrade_histogram
+from db import get_stats, get_listings, get_listing, get_price_history, get_sold_listings, get_omrade_stats, get_omrade_histogram_cached
 
 
 # PSEUDOCODE:
@@ -61,14 +61,16 @@ def create_app(config=None):
     # 1. Fetch the listing row for the given finnkode
     # 2. If not found, return 404
     # 3. Fetch price history for this listing
-    # 4. Render detalj.html with listing and price history
+    # 4. Fetch pre-calculated histogram for the listing's area (if available)
+    # 5. Render detalj.html with listing, price history, and histogram data
     @app.route("/annonse/<finnkode>")
     def detalj(finnkode):
         listing = get_listing(finnkode)
         if not listing:
             abort(404)
         history = get_price_history(finnkode)
-        return render_template("detalj.html", listing=listing, history=history)
+        histogram = get_omrade_histogram_cached(listing["omrade"]) if listing.get("omrade") else None
+        return render_template("detalj.html", listing=listing, history=history, histogram=histogram)
 
     # PSEUDOCODE:
     # 1. Fetch all sold listings
@@ -101,34 +103,15 @@ def create_app(config=None):
                                global_min=global_min, global_max=global_max)
 
     # PSEUDOCODE:
-    # 1. Fetch individual kr/m² values for active and sold listings in this area
-    # 2. If no data, return empty partial
-    # 3. Calculate bin boundaries (2000 kr intervals from floor(min) to ceil(max))
-    # 4. Count active and sold per bin
-    # 5. Render histogram partial
+    # 1. Read pre-calculated histogram bins from omrade_stats (stored as JSON by scraper)
+    # 2. If no data, return empty message
+    # 3. Render histogram partial
     @app.route("/område-histogram/<omrade>")
     def omrade_histogram(omrade):
-        BIN_SIZE = 2000
-        data = get_omrade_histogram(omrade)
-        all_vals = data["aktive"] + data["solgte"]
-        if not all_vals:
+        data = get_omrade_histogram_cached(omrade)
+        if not data:
             return "<p style='color:#94a3b8; padding:12px;'>Ingen kr/m²-data for dette området.</p>"
-
-        bin_min = (min(all_vals) // BIN_SIZE) * BIN_SIZE
-        bin_max = (max(all_vals) // BIN_SIZE) * BIN_SIZE + BIN_SIZE
-
-        bins = []
-        v = bin_min
-        while v < bin_max:
-            label = f"{v // 1000}k"
-            aktive_count = sum(1 for x in data["aktive"] if v <= x < v + BIN_SIZE)
-            solgte_count = sum(1 for x in data["solgte"] if v <= x < v + BIN_SIZE)
-            if aktive_count or solgte_count:
-                bins.append({"label": label, "aktive": aktive_count, "solgte": solgte_count})
-            v += BIN_SIZE
-
-        max_count = max((b["aktive"] + b["solgte"]) for b in bins) if bins else 1
-        return render_template("omrade_histogram.html", bins=bins, max_count=max_count, omrade=omrade)
+        return render_template("omrade_histogram.html", bins=data["bins"], max_count=data["max_count"], omrade=omrade)
 
     @app.errorhandler(404)
     def not_found(e):

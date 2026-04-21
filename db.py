@@ -1,4 +1,5 @@
 import sqlite3
+import json
 from datetime import date
 from flask import current_app
 
@@ -109,6 +110,24 @@ def get_listings(filters, sort="siste_sett_desc"):
 
 
 # PSEUDOCODE:
+# 1. Read histogram_json for the given omrade from omrade_stats
+# 2. Parse JSON into list of bin dicts
+# 3. Calculate max_count across all bins
+# 4. Return dict with bins and max_count, or None if not found
+def get_omrade_histogram_cached(omrade):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT histogram_json FROM omrade_stats WHERE omrade = ?", (omrade,)
+    ).fetchone()
+    conn.close()
+    if not row or not row["histogram_json"]:
+        return None
+    bins = json.loads(row["histogram_json"])
+    max_count = max((b["aktive"] + b["solgte"]) for b in bins) if bins else 1
+    return {"bins": bins, "max_count": max_count}
+
+
+# PSEUDOCODE:
 # 1. Query annonser by finnkode
 # 2. Return the row as a dict, or None if not found
 def get_listing(finnkode):
@@ -149,43 +168,6 @@ def get_sold_listings():
 # 1. Read all rows from omrade_stats
 # 2. Apply sort: navn_asc (default), snitt_desc, antall_desc
 # 3. Return list of dicts
-# PSEUDOCODE:
-# 1. Query active listings in this area: extract numeric bra, calculate kr/m²
-# 2. Query sold listings (last 12 months) in this area: same
-# 3. Return dict with two lists: {"aktive": [...], "solgte": [...]}
-def get_omrade_histogram(omrade):
-    conn = get_db()
-    c = conn.cursor()
-
-    bra_expr = "CAST(TRIM(SUBSTR(bra, 1, INSTR(bra || ' ', ' ') - 1)) AS INTEGER)"
-
-    aktive = c.execute(f"""
-        SELECT ROUND(totalpris / CAST({bra_expr} AS REAL)) AS kvm_pris
-        FROM annonser
-        WHERE omrade = ?
-          AND status = 'Aktiv'
-          AND totalpris IS NOT NULL
-          AND bra IS NOT NULL
-          AND {bra_expr} > 0
-    """, (omrade,)).fetchall()
-
-    solgte = c.execute(f"""
-        SELECT ROUND(totalpris / CAST({bra_expr} AS REAL)) AS kvm_pris
-        FROM solgte
-        WHERE omrade = ?
-          AND solgt_dato >= date('now', '-12 months')
-          AND totalpris IS NOT NULL
-          AND bra IS NOT NULL
-          AND {bra_expr} > 0
-    """, (omrade,)).fetchall()
-
-    conn.close()
-    return {
-        "aktive": [int(r["kvm_pris"]) for r in aktive if r["kvm_pris"]],
-        "solgte": [int(r["kvm_pris"]) for r in solgte if r["kvm_pris"]],
-    }
-
-
 def get_omrade_stats(sort="navn_asc"):
     sort_map = {
         "navn_asc":    "omrade ASC",

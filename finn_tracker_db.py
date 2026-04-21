@@ -6,6 +6,7 @@ Scraping-logikk importeres fra scraper.py.
 import sqlite3
 import re
 import os
+import json
 from datetime import date, datetime
 from playwright.sync_api import sync_playwright
 from scraper import fetch_all_listings, scrape_ad, check_sold_status
@@ -107,54 +108,56 @@ def init_db():
             snitt_kvm_pris  INTEGER,
             min_kvm_pris    INTEGER,
             max_kvm_pris    INTEGER,
+            histogram_json  TEXT,
             oppdatert       DATE
         )
     """)
+    # Migration: add histogram_json if upgrading from older schema
+    try:
+        c.execute("ALTER TABLE omrade_stats ADD COLUMN histogram_json TEXT")
+    except Exception:
+        pass  # Column already exists
 
     conn.commit()
     conn.close()
 
 
 # PSEUDOCODE:
-# 1. Query active listings grouped by omrade — calculate count, avg/min/max totalpris/bra
-#    Skip rows where bra has no parseable integer or totalpris is NULL
-# 2. Query sold listings (past 12 months) grouped by omrade — same calculations
-# 3. Merge both result sets: combine counts, recalculate weighted avg, overall min/max
-# 4. Delete all existing rows in omrade_stats
-# 5. Insert one row per area
-# 6. Commit
-# Requires: init_db() must have been called before this function (omrade_stats table must exist).
+# 1. Query active listings — extract numeric bra, calculate kr/m² per listing
+# 2. Query sold listings (past 12 months) — same
+# 3. Aggregate per omrade: lists of active and sold kr/m² values
+# 4. For each omrade, calculate summary stats + histogram bins (2000 kr intervals)
+# 5. Delete all existing rows in omrade_stats
+# 6. Insert one row per area including histogram_json
+# 7. Commit
+# Requires: init_db() must have been called before this function.
 def update_omrade_stats(conn):
+    BIN_SIZE = 2000
     today = str(date.today())
     c = conn.cursor()
 
     # bra values are stored as e.g. "41 m² (BRA-i)"; SUBSTR+INSTR extracts the leading integer
-    # Query active listings — extract numeric bra with regex, calculate kr/m²
-    active_rows = c.execute("""
-        SELECT omrade,
-               totalpris,
-               CAST(TRIM(SUBSTR(bra, 1, INSTR(bra || ' ', ' ') - 1)) AS INTEGER) AS bra_num
+    bra_expr = "CAST(TRIM(SUBSTR(bra, 1, INSTR(bra || ' ', ' ') - 1)) AS INTEGER)"
+
+    active_rows = c.execute(f"""
+        SELECT omrade, totalpris, {bra_expr} AS bra_num
         FROM annonser
         WHERE status = 'Aktiv'
           AND totalpris IS NOT NULL
           AND bra IS NOT NULL
-          AND CAST(TRIM(SUBSTR(bra, 1, INSTR(bra || ' ', ' ') - 1)) AS INTEGER) > 0
+          AND {bra_expr} > 0
     """).fetchall()
 
-    # Query sold listings from past 12 months
-    sold_rows = c.execute("""
-        SELECT omrade,
-               totalpris,
-               CAST(TRIM(SUBSTR(bra, 1, INSTR(bra || ' ', ' ') - 1)) AS INTEGER) AS bra_num
+    sold_rows = c.execute(f"""
+        SELECT omrade, totalpris, {bra_expr} AS bra_num
         FROM solgte
         WHERE solgt_dato >= date('now', '-12 months')
           AND totalpris IS NOT NULL
           AND bra IS NOT NULL
-          AND CAST(TRIM(SUBSTR(bra, 1, INSTR(bra || ' ', ' ') - 1)) AS INTEGER) > 0
+          AND {bra_expr} > 0
     """).fetchall()
 
     # Aggregate into dicts keyed by omrade
-    # Each entry: {"aktive": [...kvm_pris], "solgte": [...kvm_pris]}
     stats = {}
     for row in active_rows:
         if not row["omrade"]:
@@ -168,16 +171,33 @@ def update_omrade_stats(conn):
         kvm = round(row["totalpris"] / row["bra_num"])
         stats.setdefault(row["omrade"], {"aktive": [], "solgte": []})["solgte"].append(kvm)
 
-    # Delete old stats and insert fresh rows
+    # Build histogram bins for a given set of aktive/solgte kr/m² values
+    def build_bins(aktive, solgte):
+        all_vals = aktive + solgte
+        if not all_vals:
+            return []
+        bin_min = (min(all_vals) // BIN_SIZE) * BIN_SIZE
+        bin_max = (max(all_vals) // BIN_SIZE) * BIN_SIZE + BIN_SIZE
+        bins = []
+        v = bin_min
+        while v < bin_max:
+            a = sum(1 for x in aktive if v <= x < v + BIN_SIZE)
+            s = sum(1 for x in solgte if v <= x < v + BIN_SIZE)
+            if a or s:
+                bins.append({"label": f"{v // 1000}k", "aktive": a, "solgte": s})
+            v += BIN_SIZE
+        return bins
+
     c.execute("DELETE FROM omrade_stats")
     for omrade, data in stats.items():
         all_kvm = data["aktive"] + data["solgte"]
         if not all_kvm:
             continue
+        bins = build_bins(data["aktive"], data["solgte"])
         c.execute("""
             INSERT INTO omrade_stats
-                (omrade, antall_aktive, antall_solgte, snitt_kvm_pris, min_kvm_pris, max_kvm_pris, oppdatert)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (omrade, antall_aktive, antall_solgte, snitt_kvm_pris, min_kvm_pris, max_kvm_pris, histogram_json, oppdatert)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             omrade,
             len(data["aktive"]),
@@ -185,6 +205,7 @@ def update_omrade_stats(conn):
             round(sum(all_kvm) / len(all_kvm)),
             min(all_kvm),
             max(all_kvm),
+            json.dumps(bins),
             today,
         ))
     conn.commit()
