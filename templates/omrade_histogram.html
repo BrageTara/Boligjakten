@@ -1,0 +1,20 @@
+<div class="histogram-wrap">
+  <div class="histogram-bars">
+    {% for bin in bins %}
+      {% set total = bin.aktive + bin.solgte %}
+      {% set pct = (total / max_count * 100) | round(1) %}
+      {% set aktive_pct = (bin.aktive / total * 100) | round(1) if total else 0 %}
+      <div class="hist-col">
+        <div class="hist-bar-wrap" style="height:{{ pct }}%;">
+          <div class="hist-segment hist-aktiv" style="height:{{ aktive_pct }}%;"></div>
+          <div class="hist-segment hist-solgt" style="height:{{ 100 - aktive_pct }}%;"></div>
+        </div>
+        <div class="hist-label">{{ bin.label }}</div>
+      </div>
+    {% endfor %}
+  </div>
+  <div class="hist-legend">
+    <span class="hist-legend-dot hist-aktiv-dot"></span> Aktive
+    <span class="hist-legend-dot hist-solgt-dot" style="margin-left:12px;"></span> Solgte (12 mnd)
+  </div>
+</div>

@@ -149,6 +149,43 @@ def get_sold_listings():
 # 1. Read all rows from omrade_stats
 # 2. Apply sort: navn_asc (default), snitt_desc, antall_desc
 # 3. Return list of dicts
+# PSEUDOCODE:
+# 1. Query active listings in this area: extract numeric bra, calculate kr/m²
+# 2. Query sold listings (last 12 months) in this area: same
+# 3. Return dict with two lists: {"aktive": [...], "solgte": [...]}
+def get_omrade_histogram(omrade):
+    conn = get_db()
+    c = conn.cursor()
+
+    bra_expr = "CAST(TRIM(SUBSTR(bra, 1, INSTR(bra || ' ', ' ') - 1)) AS INTEGER)"
+
+    aktive = c.execute(f"""
+        SELECT ROUND(totalpris / CAST({bra_expr} AS REAL)) AS kvm_pris
+        FROM annonser
+        WHERE omrade = ?
+          AND status = 'Aktiv'
+          AND totalpris IS NOT NULL
+          AND bra IS NOT NULL
+          AND {bra_expr} > 0
+    """, (omrade,)).fetchall()
+
+    solgte = c.execute(f"""
+        SELECT ROUND(totalpris / CAST({bra_expr} AS REAL)) AS kvm_pris
+        FROM solgte
+        WHERE omrade = ?
+          AND solgt_dato >= date('now', '-12 months')
+          AND totalpris IS NOT NULL
+          AND bra IS NOT NULL
+          AND {bra_expr} > 0
+    """, (omrade,)).fetchall()
+
+    conn.close()
+    return {
+        "aktive": [int(r["kvm_pris"]) for r in aktive if r["kvm_pris"]],
+        "solgte": [int(r["kvm_pris"]) for r in solgte if r["kvm_pris"]],
+    }
+
+
 def get_omrade_stats(sort="navn_asc"):
     sort_map = {
         "navn_asc":    "omrade ASC",

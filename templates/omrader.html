@@ -36,8 +36,11 @@
       <tbody>
         {% set range_span = (global_max - global_min) if global_max > global_min else 1 %}
         {% for row in stats %}
-        <tr>
-          <td style="font-weight:600;">{{ row.omrade }}</td>
+        {% set omrade_id = row.omrade | replace(' ', '-') | replace('/', '-') %}
+        <tr class="omrade-row"
+            onclick="toggleHistogram('{{ omrade_id }}', '{{ row.omrade }}')"
+            title="Klikk for å se kr/m²-fordeling">
+          <td style="font-weight:600;">{{ row.omrade }} <span style="color:#94a3b8; font-size:11px;" id="chevron-{{ omrade_id }}">▶</span></td>
           <td style="text-align:right;">{{ row.antall_aktive }}</td>
           <td style="text-align:right;">{{ row.antall_solgte }}</td>
           <td style="text-align:right;">{{ "{:,.0f}".format(row.min_kvm_pris).replace(",", " ") if row.min_kvm_pris else "—" }}</td>
@@ -53,14 +56,40 @@
             {% endif %}
           </td>
         </tr>
+        <tr class="histogram-row" id="histogram-{{ omrade_id }}" style="display:none;">
+          <td colspan="7"></td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>
 
     <p style="font-size:11px; color:#94a3b8; margin-top:12px;">
-      Spredningsbaren viser hvor områdets prisrange (min→maks) ligger relativt til alle områder samlet.
+      Klikk på et område for å se kr/m²-fordeling. Spredningsbaren viser prisrange relativt til alle områder.
     </p>
 
   {% endif %}
 </div>
+
+<script>
+function toggleHistogram(omradeId, omradeNavn) {
+  const row = document.getElementById('histogram-' + omradeId);
+  const chevron = document.getElementById('chevron-' + omradeId);
+  const td = row.querySelector('td');
+
+  if (row.style.display === 'none') {
+    row.style.display = '';
+    chevron.textContent = '▼';
+    // Only fetch if not already loaded
+    if (!td.dataset.loaded) {
+      td.innerHTML = '<div style="padding:12px; color:#94a3b8; font-size:12px;">Laster...</div>';
+      fetch('/område-histogram/' + encodeURIComponent(omradeNavn))
+        .then(r => r.text())
+        .then(html => { td.innerHTML = html; td.dataset.loaded = '1'; });
+    }
+  } else {
+    row.style.display = 'none';
+    chevron.textContent = '▶';
+  }
+}
+</script>
 {% endblock %}

@@ -84,3 +84,20 @@ tr:hover td { background: #f8fafc; }
 /* Spredning bar (omrader page) */
 .spread-track { position: relative; height: 10px; background: #e2e8f0; border-radius: 5px; }
 .spread-bar { position: absolute; top: 0; height: 100%; background: #3b82f6; border-radius: 5px; min-width: 4%; }
+
+/* Histogram (omrade accordion) */
+.histogram-row td { padding: 0; background: #f8fafc; }
+.histogram-wrap { padding: 16px 20px 12px; border-top: 1px solid #e2e8f0; }
+.histogram-bars { display: flex; align-items: flex-end; gap: 4px; height: 100px; }
+.hist-col { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 28px; }
+.hist-bar-wrap { width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 3px 3px 0 0; overflow: hidden; }
+.hist-segment { width: 100%; }
+.hist-aktiv { background: #3b82f6; }
+.hist-solgt { background: #f97316; }
+.hist-label { font-size: 9px; color: #94a3b8; margin-top: 4px; white-space: nowrap; }
+.hist-legend { margin-top: 10px; font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px; }
+.hist-legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.hist-aktiv-dot { background: #3b82f6; }
+.hist-solgt-dot { background: #f97316; }
+.omrade-row { cursor: pointer; }
+.omrade-row:hover td { background: #eff6ff; }
