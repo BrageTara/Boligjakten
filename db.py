@@ -63,6 +63,14 @@ def get_listings(filters, sort="siste_sett_desc"):
     else:
         query += " AND status = 'Aktiv'"
 
+    er_nybygg_filter = filters.get("er_nybygg")
+    if er_nybygg_filter:
+        placeholders = ",".join("?" * len(er_nybygg_filter))
+        query += f" AND er_nybygg IN ({placeholders})"
+        params.extend(int(v) for v in er_nybygg_filter)
+    else:
+        query += " AND er_nybygg = 0"
+
     if filters.get("omrade"):
         query += " AND omrade = ?"
         params.append(filters["omrade"])
@@ -123,7 +131,10 @@ def get_omrade_histogram_cached(omrade):
     if not row or not row["histogram_json"]:
         return None
     bins = json.loads(row["histogram_json"])
-    max_count = max((b["aktive"] + b["solgte"]) for b in bins) if bins else 1
+    max_count = max(
+        (b.get("aktive", 0) + b.get("solgte", 0) + b.get("ny_aktive", 0) + b.get("ny_solgte", 0))
+        for b in bins
+    ) if bins else 1
     return {"bins": bins, "max_count": max_count}
 
 

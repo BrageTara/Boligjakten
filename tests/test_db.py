@@ -14,7 +14,7 @@ def test_get_stats_returns_expected_keys(seeded_app):
 def test_get_stats_counts(seeded_app):
     with seeded_app.app_context():
         stats = get_stats()
-    assert stats["total"] == 3
+    assert stats["total"] == 4   # was 3, now 4 (3 brukt + 1 nybygg)
     assert stats["flaggede"] == 3
     assert stats["prisnedsatte"] == 1
 
@@ -22,7 +22,25 @@ def test_get_stats_counts(seeded_app):
 def test_get_listings_no_filters_returns_all_active(seeded_app):
     with seeded_app.app_context():
         rows = get_listings({})
-    assert len(rows) == 3
+    assert len(rows) == 3  # default: only brukt (er_nybygg=0)
+
+
+def test_get_listings_filter_brukt_only(seeded_app):
+    with seeded_app.app_context():
+        rows = get_listings({"er_nybygg": ["0"]})
+    assert all(r["er_nybygg"] == 0 for r in rows)
+
+
+def test_get_listings_filter_nybygg_only(seeded_app):
+    with seeded_app.app_context():
+        rows = get_listings({"er_nybygg": ["1"]})
+    assert all(r["er_nybygg"] == 1 for r in rows)
+
+
+def test_get_listings_filter_both_types(seeded_app):
+    with seeded_app.app_context():
+        rows = get_listings({"er_nybygg": ["0", "1"]})
+    assert len(rows) == 4  # 3 brukt + 1 nybygg in seed
 
 
 def test_get_listings_filter_by_omrade(seeded_app):
