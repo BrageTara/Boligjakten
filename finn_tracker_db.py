@@ -99,8 +99,95 @@ def init_db():
         )
     """)
 
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS omrade_stats (
+            omrade          TEXT PRIMARY KEY,
+            antall_aktive   INTEGER DEFAULT 0,
+            antall_solgte   INTEGER DEFAULT 0,
+            snitt_kvm_pris  INTEGER,
+            min_kvm_pris    INTEGER,
+            max_kvm_pris    INTEGER,
+            oppdatert       DATE
+        )
+    """)
+
     conn.commit()
     conn.close()
+
+
+# PSEUDOCODE:
+# 1. Query active listings grouped by omrade — calculate count, avg/min/max totalpris/bra
+#    Skip rows where bra has no parseable integer or totalpris is NULL
+# 2. Query sold listings (past 12 months) grouped by omrade — same calculations
+# 3. Merge both result sets: combine counts, recalculate weighted avg, overall min/max
+# 4. Delete all existing rows in omrade_stats
+# 5. Insert one row per area
+# 6. Commit
+# Requires: init_db() must have been called before this function (omrade_stats table must exist).
+def update_omrade_stats(conn):
+    today = str(date.today())
+    c = conn.cursor()
+
+    # bra values are stored as e.g. "41 m² (BRA-i)"; SUBSTR+INSTR extracts the leading integer
+    # Query active listings — extract numeric bra with regex, calculate kr/m²
+    active_rows = c.execute("""
+        SELECT omrade,
+               totalpris,
+               CAST(TRIM(SUBSTR(bra, 1, INSTR(bra || ' ', ' ') - 1)) AS INTEGER) AS bra_num
+        FROM annonser
+        WHERE status = 'Aktiv'
+          AND totalpris IS NOT NULL
+          AND bra IS NOT NULL
+          AND CAST(TRIM(SUBSTR(bra, 1, INSTR(bra || ' ', ' ') - 1)) AS INTEGER) > 0
+    """).fetchall()
+
+    # Query sold listings from past 12 months
+    sold_rows = c.execute("""
+        SELECT omrade,
+               totalpris,
+               CAST(TRIM(SUBSTR(bra, 1, INSTR(bra || ' ', ' ') - 1)) AS INTEGER) AS bra_num
+        FROM solgte
+        WHERE solgt_dato >= date('now', '-12 months')
+          AND totalpris IS NOT NULL
+          AND bra IS NOT NULL
+          AND CAST(TRIM(SUBSTR(bra, 1, INSTR(bra || ' ', ' ') - 1)) AS INTEGER) > 0
+    """).fetchall()
+
+    # Aggregate into dicts keyed by omrade
+    # Each entry: {"aktive": [...kvm_pris], "solgte": [...kvm_pris]}
+    stats = {}
+    for row in active_rows:
+        if not row["omrade"]:
+            continue
+        kvm = round(row["totalpris"] / row["bra_num"])
+        stats.setdefault(row["omrade"], {"aktive": [], "solgte": []})["aktive"].append(kvm)
+
+    for row in sold_rows:
+        if not row["omrade"]:
+            continue
+        kvm = round(row["totalpris"] / row["bra_num"])
+        stats.setdefault(row["omrade"], {"aktive": [], "solgte": []})["solgte"].append(kvm)
+
+    # Delete old stats and insert fresh rows
+    c.execute("DELETE FROM omrade_stats")
+    for omrade, data in stats.items():
+        all_kvm = data["aktive"] + data["solgte"]
+        if not all_kvm:
+            continue
+        c.execute("""
+            INSERT INTO omrade_stats
+                (omrade, antall_aktive, antall_solgte, snitt_kvm_pris, min_kvm_pris, max_kvm_pris, oppdatert)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            omrade,
+            len(data["aktive"]),
+            len(data["solgte"]),
+            round(sum(all_kvm) / len(all_kvm)),
+            min(all_kvm),
+            max(all_kvm),
+            today,
+        ))
+    conn.commit()
 
 
 # ─── Lese/skrive data ─────────────────────────────────────────────────────────
@@ -299,6 +386,7 @@ def main():
         found_codes = {l["finnkode"] for l in listings}
         new_count = 0
         updated_count = 0
+        sold_count = 0
 
         try:
             for i, listing in enumerate(listings, 1):
@@ -324,7 +412,6 @@ def main():
                     updated_count += 1
 
             # Sjekk om noen eksisterende annonser er borte fra søket
-            sold_count = 0
             for finnkode, info in existing.items():
                 if finnkode not in found_codes and info.get("status") in ("Aktiv", "Ukjent"):
                     ad_url = f"https://www.finn.no/realestate/homes/ad.html?finnkode={finnkode}"
@@ -335,6 +422,10 @@ def main():
                     sold_count += 1
 
         finally:
+            try:
+                update_omrade_stats(conn)
+            except Exception as e:
+                print(f"  ADVARSEL: update_omrade_stats feilet: {e}")
             browser.close()
             conn.close()
             print(f"\n=== Ferdig ===")
