@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "You are a Notion updater for the Boligjakten project. Run after a Claude Code session ends to log what changed.\n\nSteps:\n1. Check recently modified files using Bash: `ls -lt 'C:/Users/brage/OneDrive/Dokumenter/Eiendom/Kode' | head -20` — if only non-code files changed (e.g. only .db or temp files), stop here without updating Notion.\n2. Search Notion tasks (data_source_id: 0ccbc26f-c144-4f07-981e-b5d7b9210a9b) using notion-search with query 'In Progress' to find active tasks.\n3. If any tasks appear completed based on the files modified, update their status to 'Done' using notion-update-page.\n4. Fetch the Changelog page (ID: 349fea4d-0c67-813e-ba9a-ccb1819def8f) using notion-fetch, then append a new paragraph block with today's date and a one-sentence summary of what changed using notion-update-page.\n\nBe brief. One sentence per changelog entry is enough. Skip Notion entirely if no .py, .html, or .css files were modified.",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
