@@ -136,10 +136,10 @@ def init_db():
 
 
 # PSEUDOCODE:
-# 1. Query active listings — extract numeric bra, calculate kr/m² per listing
+# 1. Query active listings — extract numeric bra, calculate kr/m² per listing, track er_nybygg
 # 2. Query sold listings (past 12 months) — same
-# 3. Aggregate per omrade: lists of active and sold kr/m² values
-# 4. For each omrade, calculate summary stats + histogram bins (2000 kr intervals)
+# 3. Aggregate per omrade: separate lists for aktive/solgte/ny_aktive/ny_solgte kr/m² values
+# 4. For each omrade, calculate summary stats + histogram bins (2000 kr intervals, 4 fields each)
 # 5. Delete all existing rows in omrade_stats
 # 6. Insert one row per area including histogram_json
 # 7. Commit
@@ -153,7 +153,7 @@ def update_omrade_stats(conn):
     bra_expr = "CAST(TRIM(SUBSTR(bra, 1, INSTR(bra || ' ', ' ') - 1)) AS INTEGER)"
 
     active_rows = c.execute(f"""
-        SELECT omrade, totalpris, {bra_expr} AS bra_num
+        SELECT omrade, totalpris, {bra_expr} AS bra_num, er_nybygg
         FROM annonser
         WHERE status = 'Aktiv'
           AND totalpris IS NOT NULL
@@ -162,7 +162,7 @@ def update_omrade_stats(conn):
     """).fetchall()
 
     sold_rows = c.execute(f"""
-        SELECT omrade, totalpris, {bra_expr} AS bra_num
+        SELECT omrade, totalpris, {bra_expr} AS bra_num, COALESCE(er_nybygg, 0) AS er_nybygg
         FROM solgte
         WHERE solgt_dato >= date('now', '-12 months')
           AND totalpris IS NOT NULL
@@ -176,17 +176,25 @@ def update_omrade_stats(conn):
         if not row["omrade"]:
             continue
         kvm = round(row["totalpris"] / row["bra_num"])
-        stats.setdefault(row["omrade"], {"aktive": [], "solgte": []})["aktive"].append(kvm)
+        entry = stats.setdefault(row["omrade"], {"aktive": [], "solgte": [], "ny_aktive": [], "ny_solgte": []})
+        if row["er_nybygg"]:
+            entry["ny_aktive"].append(kvm)
+        else:
+            entry["aktive"].append(kvm)
 
     for row in sold_rows:
         if not row["omrade"]:
             continue
         kvm = round(row["totalpris"] / row["bra_num"])
-        stats.setdefault(row["omrade"], {"aktive": [], "solgte": []})["solgte"].append(kvm)
+        entry = stats.setdefault(row["omrade"], {"aktive": [], "solgte": [], "ny_aktive": [], "ny_solgte": []})
+        if row["er_nybygg"]:
+            entry["ny_solgte"].append(kvm)
+        else:
+            entry["solgte"].append(kvm)
 
-    # Build histogram bins for a given set of aktive/solgte kr/m² values
-    def build_bins(aktive, solgte):
-        all_vals = aktive + solgte
+    # Build histogram bins for a given set of aktive/solgte/ny_aktive/ny_solgte kr/m² values
+    def build_bins(aktive, solgte, ny_aktive, ny_solgte):
+        all_vals = aktive + solgte + ny_aktive + ny_solgte
         if not all_vals:
             return []
         bin_min = (min(all_vals) // BIN_SIZE) * BIN_SIZE
@@ -194,27 +202,29 @@ def update_omrade_stats(conn):
         bins = []
         v = bin_min
         while v < bin_max:
-            a = sum(1 for x in aktive if v <= x < v + BIN_SIZE)
-            s = sum(1 for x in solgte if v <= x < v + BIN_SIZE)
-            if a or s:
-                bins.append({"label": f"{v // 1000}k", "aktive": a, "solgte": s})
+            a  = sum(1 for x in aktive    if v <= x < v + BIN_SIZE)
+            s  = sum(1 for x in solgte    if v <= x < v + BIN_SIZE)
+            na = sum(1 for x in ny_aktive if v <= x < v + BIN_SIZE)
+            ns = sum(1 for x in ny_solgte if v <= x < v + BIN_SIZE)
+            if a or s or na or ns:
+                bins.append({"label": f"{v // 1000}k", "aktive": a, "solgte": s, "ny_aktive": na, "ny_solgte": ns})
             v += BIN_SIZE
         return bins
 
     c.execute("DELETE FROM omrade_stats")
     for omrade, data in stats.items():
-        all_kvm = data["aktive"] + data["solgte"]
+        all_kvm = data["aktive"] + data["solgte"] + data["ny_aktive"] + data["ny_solgte"]
         if not all_kvm:
             continue
-        bins = build_bins(data["aktive"], data["solgte"])
+        bins = build_bins(data["aktive"], data["solgte"], data["ny_aktive"], data["ny_solgte"])
         c.execute("""
             INSERT INTO omrade_stats
                 (omrade, antall_aktive, antall_solgte, snitt_kvm_pris, min_kvm_pris, max_kvm_pris, histogram_json, oppdatert)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             omrade,
-            len(data["aktive"]),
-            len(data["solgte"]),
+            len(data["aktive"]) + len(data["ny_aktive"]),
+            len(data["solgte"]) + len(data["ny_solgte"]),
             round(sum(all_kvm) / len(all_kvm)),
             min(all_kvm),
             max(all_kvm),
