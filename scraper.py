@@ -8,7 +8,7 @@ import json
 
 SEARCH_URL = (
     "https://www.finn.no/realestate/homes/search.html"
-    "?location=1.20016.20318&is_new_property=false"
+    "?location=1.20016.20318"
     "&sort=PUBLISHED_DESC"
 )
 
@@ -107,7 +107,8 @@ def fetch_all_listings(page):
                 finnkode = m.group(1)
                 if finnkode not in seen:
                     seen.add(finnkode)
-                    batch.append({"finnkode": finnkode, "url": href})
+                    er_nybygg = 1 if "/newbuildings/" in href else 0
+                    batch.append({"finnkode": finnkode, "url": href, "er_nybygg": er_nybygg})
 
         if not batch:
             print(f"  Ingen nye annonser på side {page_num} — ferdig med søk.")
