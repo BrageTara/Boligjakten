@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ listing.adresse }} — Boligjakten{% endblock %}
+{% block content %}
+<div class="detail-container">
+
+  <a href="{{ url_for('index') }}" class="btn-back">← Tilbake til oversikten</a>
+
+  <div class="detail-header">
+    <div class="detail-title">{{ listing.adresse }}</div>
+    <div class="detail-subtitle">
+      {{ listing.omrade }}{% if listing.postnummer %} · {{ listing.postnummer }}{% endif %}
+      · <a href="{{ listing.url }}" target="_blank" style="color:#1d4ed8;">Åpne på Finn.no ↗</a>
+    </div>
+    {% if listing.flagg %}
+      <div class="listing-flags" style="margin-top:8px;">
+        {% for flag in listing.flagg.split(' | ') %}
+          {% if flag == 'Prisnedsatt' %}<span class="badge badge-prisnedsatt">📉 {{ flag }}</span>
+          {% elif '14+' in flag %}<span class="badge badge-dager">⏱ {{ flag }}</span>
+          {% elif 'visninger' in flag %}<span class="badge badge-visninger">👁 {{ flag }}</span>
+          {% elif 'fellesgjeld' in flag %}<span class="badge badge-fellesgjeld">💰 {{ flag }}</span>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="detail-grid">
+    {% for label, val in [
+        ('Prisantydning',    listing.prisantydning|format_kr if listing.prisantydning else '—'),
+        ('Fellesgjeld',      listing.fellesgjeld|format_kr if listing.fellesgjeld else '—'),
+        ('Totalpris',        listing.totalpris|format_kr if listing.totalpris else '—'),
+        ('kr/m²',            listing.kvm_pris|format_kr if listing.kvm_pris else '—'),
+        ('Felleskost/mnd',   listing.felleskost|format_kr if listing.felleskost else '—'),
+        ('Fellesformue',     listing.fellesformue|format_kr if listing.fellesformue else '—'),
+        ('Boligtype',        listing.type or '—'),
+        ('BRA',              (listing.bra ~ ' m²') if listing.bra else '—'),
+        ('Rom',              listing.rom or '—'),
+        ('Etasje',           listing.etasje or '—'),
+        ('Første gang sett', listing.forste_sett or '—'),
+        ('Sist oppdatert',   listing.siste_sett or '—'),
+        ('Dager på Finn',    listing.dager_ute or 0),
+        ('Antall visninger', listing.antall_visninger or 0),
+        ('Neste visning',    listing.neste_visning or '—'),
+        ('Startpris',        listing.pris_ved_start|format_kr if listing.pris_ved_start else '—'),
+        ('Prisendring',      (('+' if listing.prisendring > 0 else '') ~ '{:,.0f}'.format(listing.prisendring).replace(',', ' ') ~ ' kr') if listing.prisendring else '—'),
+        ('Megler',           listing.megler or '—'),
+        ('Meglerkontor',     listing.meglerkontor or '—'),
+    ] %}
+      <div class="detail-field">
+        <div class="detail-field-label">{{ label }}</div>
+        <div class="detail-field-value">{{ val }}</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if history %}
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:10px;">Prishistorikk</h3>
+    <table>
+      <thead><tr><th>Dato</th><th>Prisantydning</th><th>Totalpris</th></tr></thead>
+      <tbody>
+        {% for h in history %}
+          <tr>
+            <td>{{ h.dato }}</td>
+            <td>{% if h.prisantydning %}{{ "{:,.0f}".format(h.prisantydning).replace(",", " ") }} kr{% else %}—{% endif %}</td>
+            <td>{% if h.totalpris %}{{ "{:,.0f}".format(h.totalpris).replace(",", " ") }} kr{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+</div>
+{% endblock %}
