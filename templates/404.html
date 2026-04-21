@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Side ikke funnet — Boligjakten{% endblock %}
+{% block content %}
+<div style="text-align:center;padding:60px 20px;">
+  <h2 style="font-size:48px;color:#cbd5e1;">404</h2>
+  <p style="color:#64748b;margin:12px 0;">Siden finnes ikke.</p>
+  <a href="{{ url_for('index') }}" class="btn-back">← Tilbake til oversikten</a>
+</div>
+{% endblock %}

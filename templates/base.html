@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Boligjakten{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+
+<nav class="nav">
+  <span class="nav-title">🏠 Boligjakten</span>
+  <div class="nav-links">
+    <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' }}">Annonser</a>
+    <a href="{{ url_for('solgte') }}" class="{{ 'active' if request.endpoint == 'solgte' }}">Solgte</a>
+    <a href="{{ url_for('prishistorikk') }}" class="{{ 'active' if request.endpoint == 'prishistorikk' }}">Prisnedsatte</a>
+  </div>
+  <span class="nav-meta">Trondheim</span>
+</nav>
+
+{% block content %}{% endblock %}
+
+</body>
+</html>
