@@ -53,27 +53,34 @@
     {% endfor %}
   </div>
 
-  {% if history %}
-    <h3 style="font-size:14px;font-weight:600;margin-bottom:10px;">Prishistorikk</h3>
-    <table>
-      <thead><tr><th>Dato</th><th>Prisantydning</th><th>Totalpris</th></tr></thead>
-      <tbody>
-        {% for h in history %}
-          <tr>
-            <td>{{ h.dato }}</td>
-            <td>{% if h.prisantydning %}{{ "{:,.0f}".format(h.prisantydning).replace(",", " ") }} kr{% else %}—{% endif %}</td>
-            <td>{% if h.totalpris %}{{ "{:,.0f}".format(h.totalpris).replace(",", " ") }} kr{% else %}—{% endif %}</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  {% if events %}
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:10px;">Tidslinje</h3>
+    <ul class="timeline">
+      {% for e in events %}
+        <li class="timeline-event timeline-{{ e.type }}">
+          <span class="timeline-dot"></span>
+          <span class="timeline-date">{{ e.dato }}</span>
+          <span class="timeline-text">
+            {% if e.type == "publisert" %}Publisert
+            {% elif e.type == "prisendring" %}Prisendring: {{ "{:,.0f}".format(e.detaljer.fra).replace(",", " ") }} kr → {{ "{:,.0f}".format(e.detaljer.til).replace(",", " ") }} kr
+            {% elif e.type == "visning" %}Visning ({{ e.detaljer.visningsdato }})
+            {% elif e.type == "solgt" %}Solgt
+            {% elif e.type == "trukket" %}Trukket
+            {% elif e.type == "ukjent" %}Fjernet fra Finn
+            {% endif %}
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
   {% endif %}
 
   {% if histogram %}
     <h3 style="font-size:14px;font-weight:600;margin-top:24px;margin-bottom:10px;">
       kr/m²-fordeling — {{ listing.omrade }}
     </h3>
-    {% include "omrade_histogram.html" %}
+    {% with bins=histogram.bins, max_count=histogram.max_count, stats=histogram %}
+      {% include "omrade_histogram.html" %}
+    {% endwith %}
   {% endif %}
 
 </div>

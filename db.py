@@ -119,9 +119,9 @@ def get_listings(filters, sort="siste_sett_desc"):
 
 # PSEUDOCODE:
 # 1. Read histogram_json for the given omrade from omrade_stats
-# 2. Parse JSON into list of bin dicts
+# 2. Parse JSON — new format is a dict with "bins" key; old format is a plain list (backward compat)
 # 3. Calculate max_count across all bins
-# 4. Return dict with bins and max_count, or None if not found
+# 4. Return dict with bins, max_count, and all new stat fields; or None if not found
 def get_omrade_histogram_cached(omrade):
     conn = get_db()
     row = conn.execute(
@@ -130,12 +130,21 @@ def get_omrade_histogram_cached(omrade):
     conn.close()
     if not row or not row["histogram_json"]:
         return None
-    bins = json.loads(row["histogram_json"])
+    raw = json.loads(row["histogram_json"])
+    # Handle both old format (plain list) and new format (dict with "bins" key)
+    if isinstance(raw, list):
+        bins = raw
+        extra = {"bin_start": None, "brukt_avg": None, "brukt_median": None,
+                 "ny_avg": None, "ny_median": None, "alle_avg": None, "alle_median": None}
+    else:
+        bins = raw.get("bins", [])
+        extra = {k: raw.get(k) for k in
+                 ("bin_start", "brukt_avg", "brukt_median", "ny_avg", "ny_median", "alle_avg", "alle_median")}
     max_count = max(
         (b.get("aktive", 0) + b.get("solgte", 0) + b.get("ny_aktive", 0) + b.get("ny_solgte", 0))
         for b in bins
     ) if bins else 1
-    return {"bins": bins, "max_count": max_count}
+    return {"bins": bins, "max_count": max_count, **extra}
 
 
 # PSEUDOCODE:
@@ -150,6 +159,7 @@ def get_listing(finnkode):
     return dict(row) if row else None
 
 
+
 # PSEUDOCODE:
 # 1. Query prishistorikk for the given finnkode, ordered by date ascending
 # 2. Return list of row dicts
@@ -161,6 +171,26 @@ def get_price_history(finnkode):
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# PSEUDOCODE:
+# 1. Query hendelser for the given finnkode, ordered by date ascending
+# 2. Parse the detaljer JSON string into a dict for each row
+# 3. Return list of event dicts
+def get_events(finnkode):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM hendelser WHERE finnkode = ? ORDER BY dato ASC, id ASC",
+        (finnkode,)
+    ).fetchall()
+    conn.close()
+    events = []
+    for row in rows:
+        event = dict(row)
+        if event["detaljer"]:
+            event["detaljer"] = json.loads(event["detaljer"])
+        events.append(event)
+    return events
 
 
 # PSEUDOCODE:

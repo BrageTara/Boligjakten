@@ -1,7 +1,7 @@
 import os
 from datetime import date
 from flask import Flask, render_template, request, abort
-from db import get_stats, get_listings, get_listing, get_price_history, get_sold_listings, get_omrade_stats, get_omrade_histogram_cached
+from db import get_stats, get_listings, get_listing, get_events, get_sold_listings, get_omrade_stats, get_omrade_histogram_cached
 
 
 # PSEUDOCODE:
@@ -61,17 +61,17 @@ def create_app(config=None):
     # PSEUDOCODE:
     # 1. Fetch the listing row for the given finnkode
     # 2. If not found, return 404
-    # 3. Fetch price history for this listing
+    # 3. Fetch events timeline for this listing
     # 4. Fetch pre-calculated histogram for the listing's area (if available)
-    # 5. Render detalj.html with listing, price history, and histogram data
+    # 5. Render detalj.html with listing, events, and histogram data
     @app.route("/annonse/<finnkode>")
     def detalj(finnkode):
         listing = get_listing(finnkode)
         if not listing:
             abort(404)
-        history = get_price_history(finnkode)
+        events = get_events(finnkode)
         histogram = get_omrade_histogram_cached(listing["omrade"]) if listing.get("omrade") else None
-        return render_template("detalj.html", listing=listing, history=history, histogram=histogram)
+        return render_template("detalj.html", listing=listing, events=events, histogram=histogram)
 
     # PSEUDOCODE:
     # 1. Fetch all sold listings
@@ -112,7 +112,9 @@ def create_app(config=None):
         data = get_omrade_histogram_cached(omrade)
         if not data:
             return "<p style='color:#94a3b8; padding:12px;'>Ingen kr/m²-data for dette området.</p>"
-        return render_template("omrade_histogram.html", bins=data["bins"], max_count=data["max_count"], omrade=omrade)
+        return render_template("omrade_histogram.html",
+                               bins=data["bins"], max_count=data["max_count"],
+                               omrade=omrade, stats=data)
 
     @app.errorhandler(404)
     def not_found(e):

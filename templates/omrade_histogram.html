@@ -1,3 +1,12 @@
+{% if stats and stats.bin_start is not none and stats.alle_avg %}
+  {% set bin_count = bins | length %}
+  {% set avg_left    = ((stats.alle_avg    - stats.bin_start) / (bin_count * 2000) * 100) | round(2) %}
+  {% set median_left = ((stats.alle_median - stats.bin_start) / (bin_count * 2000) * 100) | round(2) %}
+{% else %}
+  {% set avg_left = none %}
+  {% set median_left = none %}
+{% endif %}
+
 <div class="histogram-wrap">
   <div class="histogram-bars" id="hist-bars-{{ omrade | replace(' ', '-') }}">
     {% for bin in bins %}
@@ -17,6 +26,19 @@
         <div class="hist-label">{{ bin.label }}</div>
       </div>
     {% endfor %}
+
+    {% if avg_left is not none %}
+      <div class="hist-avg-line" id="hist-avg-line-{{ omrade | replace(' ', '-') }}"
+           style="left:{{ avg_left }}%;">
+        <span class="hist-line-label">Snitt: {{ (stats.alle_avg / 1000) | round(0) | int }}k</span>
+      </div>
+    {% endif %}
+    {% if median_left is not none %}
+      <div class="hist-median-line" id="hist-median-line-{{ omrade | replace(' ', '-') }}"
+           style="left:{{ median_left }}%;">
+        <span class="hist-line-label">Median: {{ (stats.alle_median / 1000) | round(0) | int }}k</span>
+      </div>
+    {% endif %}
   </div>
 
   <div class="hist-legend">
@@ -32,17 +54,100 @@
     <span class="hist-legend-item" data-seg="ny-solgt" onclick="toggleHistSeg(this)" style="margin-left:12px;">
       <span class="hist-legend-dot hist-ny-solgt-dot"></span> Nybygg solgt
     </span>
+    {% if avg_left is not none %}
+    <span style="margin-left:12px; display:inline-flex; align-items:center; gap:4px; font-size:11px; color:#64748b;">
+      <span style="display:inline-block;width:10px;height:0;border-top:2px dotted #a855f7;"></span> Snitt
+    </span>
+    <span style="margin-left:8px; display:inline-flex; align-items:center; gap:4px; font-size:11px; color:#64748b;">
+      <span style="display:inline-block;width:10px;height:0;border-top:2px dotted #f59e0b;"></span> Median
+    </span>
+    {% endif %}
   </div>
 </div>
 
 <script>
+// toggleHistSeg must be defined globally so onclick attributes work.
+// It is redefined each time a histogram partial is rendered, which is fine
+// since only one histogram is interacted with at a time.
 function toggleHistSeg(legendItem) {
-  const seg = legendItem.dataset.seg;
-  const isDisabled = legendItem.classList.toggle('disabled');
-  document.querySelectorAll('[data-seg="' + seg + '"]').forEach(el => {
+  var seg = legendItem.dataset.seg;
+  var isDisabled = legendItem.classList.toggle('disabled');
+  document.querySelectorAll('[data-seg="' + seg + '"]').forEach(function(el) {
     if (el !== legendItem) {
       el.style.display = isDisabled ? 'none' : '';
     }
   });
+  // updateHistLines is assigned by the stats IIFE below and reassigned per render
+  if (typeof updateHistLines === 'function') updateHistLines();
 }
 </script>
+
+{% if stats and stats.bin_start is not none %}
+<script>
+(function() {
+  var BIN_SIZE = 2000;
+  var histStats = {
+    bin_start:    {{ stats.bin_start }},
+    bin_count:    {{ bins | length }},
+    brukt_avg:    {{ stats.brukt_avg    if stats.brukt_avg    is not none else 'null' }},
+    brukt_median: {{ stats.brukt_median if stats.brukt_median is not none else 'null' }},
+    ny_avg:       {{ stats.ny_avg       if stats.ny_avg       is not none else 'null' }},
+    ny_median:    {{ stats.ny_median    if stats.ny_median    is not none else 'null' }},
+    alle_avg:     {{ stats.alle_avg     if stats.alle_avg     is not none else 'null' }},
+    alle_median:  {{ stats.alle_median  if stats.alle_median  is not none else 'null' }},
+  };
+  var suffix = {{ omrade | replace(' ', '-') | tojson }};
+
+  function priceToLeft(price) {
+    return (price - histStats.bin_start) / (histStats.bin_count * BIN_SIZE) * 100;
+  }
+
+  function setLine(lineId, value, labelPrefix) {
+    var el = document.getElementById(lineId);
+    if (!el) return;
+    if (value == null) {
+      el.style.display = 'none';
+    } else {
+      el.style.display = '';
+      el.style.left = priceToLeft(value).toFixed(2) + '%';
+      var label = el.querySelector('.hist-line-label');
+      if (label) label.textContent = labelPrefix + ': ' + Math.round(value / 1000) + 'k';
+    }
+  }
+
+  // Exposed globally so toggleHistSeg (defined above) can call it
+  window.updateHistLines = function() {
+    var barsEl = document.getElementById('hist-bars-' + suffix);
+    if (!barsEl) return;
+
+    // Check which segment groups are currently visible
+    var bruktVisible = false;
+    var nyVisible = false;
+    barsEl.querySelectorAll('[data-seg]').forEach(function(el) {
+      if (el.classList.contains('hist-legend-item')) return;
+      if (el.style.display === 'none') return;
+      var seg = el.dataset.seg;
+      if (seg === 'brukt-aktiv' || seg === 'brukt-solgt') bruktVisible = true;
+      if (seg === 'ny-aktiv'    || seg === 'ny-solgt')    nyVisible = true;
+    });
+
+    var avg, median;
+    if (bruktVisible && !nyVisible) {
+      avg = histStats.brukt_avg; median = histStats.brukt_median;
+    } else if (nyVisible && !bruktVisible) {
+      avg = histStats.ny_avg; median = histStats.ny_median;
+    } else if (!bruktVisible && !nyVisible) {
+      avg = null; median = null;
+    } else {
+      avg = histStats.alle_avg; median = histStats.alle_median;
+    }
+
+    setLine('hist-avg-line-' + suffix, avg, 'Snitt');
+    setLine('hist-median-line-' + suffix, median, 'Median');
+  };
+
+  // Run immediately to set correct initial state
+  window.updateHistLines();
+})();
+</script>
+{% endif %}

@@ -88,8 +88,8 @@ tr:hover td { background: #f8fafc; }
 /* Histogram (omrade accordion) */
 .histogram-row td { padding: 0; background: #f8fafc; }
 .histogram-wrap { padding: 16px 20px 12px; border-top: 1px solid #e2e8f0; }
-.histogram-bars { display: flex; align-items: flex-end; gap: 4px; height: 100px; }
-.hist-col { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 28px; }
+.histogram-bars { display: flex; align-items: flex-end; gap: 4px; height: 100px; position: relative; }
+.hist-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; flex: 1; min-width: 28px; height: 100%; }
 .hist-bar-wrap { width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 3px 3px 0 0; overflow: hidden; }
 .hist-segment { width: 100%; }
 .hist-aktiv { background: #3b82f6; }
@@ -105,5 +105,50 @@ tr:hover td { background: #f8fafc; }
 .hist-ny-solgt-dot { background: #16a34a; }
 .hist-legend-item { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; transition: opacity 0.15s; }
 .hist-legend-item.disabled { opacity: 0.35; }
+.hist-avg-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 2px dotted #a855f7;
+  pointer-events: none;
+  z-index: 1;
+}
+.hist-median-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 2px dotted #f59e0b;
+  pointer-events: none;
+  z-index: 1;
+}
+.hist-line-label {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.hist-avg-line .hist-line-label  { color: #a855f7; }
+.hist-median-line .hist-line-label { color: #f59e0b; }
 .omrade-row { cursor: pointer; }
 .omrade-row:hover td { background: #eff6ff; }
+
+/* Timeline */
+.timeline { list-style: none; padding: 0; margin: 0 0 24px 0; }
+.timeline-event { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-left: 2px solid #e2e8f0; margin-left: 6px; padding-left: 16px; position: relative; }
+.timeline-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; position: absolute; left: -7px; }
+.timeline-date { font-size: 12px; color: #64748b; min-width: 90px; }
+.timeline-text { font-size: 13px; font-weight: 500; }
+
+.timeline-publisert .timeline-dot { background: #3b82f6; }
+.timeline-publisert .timeline-text { color: #1d4ed8; }
+.timeline-visning .timeline-dot { background: #94a3b8; }
+.timeline-visning .timeline-text { color: #475569; }
+.timeline-prisendring .timeline-dot { background: #f97316; }
+.timeline-prisendring .timeline-text { color: #c2410c; }
+.timeline-solgt .timeline-dot { background: #22c55e; }
+.timeline-solgt .timeline-text { color: #15803d; }
+.timeline-trukket .timeline-dot { background: #6b7280; }
+.timeline-trukket .timeline-text { color: #374151; }
+.timeline-ukjent .timeline-dot { background: #6b7280; }
+.timeline-ukjent .timeline-text { color: #374151; }

@@ -95,6 +95,13 @@ def seeded_app(tmp_path):
             histogram_json TEXT,
             oppdatert DATE
         );
+        CREATE TABLE hendelser (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            finnkode TEXT NOT NULL,
+            dato DATE,
+            type TEXT,
+            detaljer TEXT
+        );
     """)
     conn.commit()
     conn.close()
