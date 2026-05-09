@@ -36,7 +36,8 @@ def seeded_app(tmp_path):
             pris_ved_start INTEGER, prisendring INTEGER,
             status TEXT DEFAULT 'Aktiv', url TEXT, megler TEXT,
             meglerkontor TEXT, neste_visning TEXT, flagg TEXT,
-            omrade TEXT, postnummer TEXT, er_nybygg INTEGER DEFAULT 0
+            omrade TEXT, postnummer TEXT, er_nybygg INTEGER DEFAULT 0,
+            lat REAL, lon REAL
         );
         CREATE TABLE prishistorikk (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,29 +53,34 @@ def seeded_app(tmp_path):
             pris_ved_start INTEGER, prisendring INTEGER, status TEXT,
             url TEXT, megler TEXT, meglerkontor TEXT, neste_visning TEXT,
             flagg TEXT, omrade TEXT, postnummer TEXT,
-            solgt_dato DATE, arsak TEXT, er_nybygg INTEGER DEFAULT 0
+            solgt_dato DATE, arsak TEXT, er_nybygg INTEGER DEFAULT 0,
+            lat REAL, lon REAL
         );
         INSERT INTO annonser VALUES
             ('111','Møllenberggata 12',2990000,NULL,2990000,55370,3200,NULL,
              'Leilighet','54','2','2. etasje','2026-04-10','2026-04-21',
              11,0,3200000,-210000,'Aktiv',
              'https://finn.no/realestate/homes/ad.html?finnkode=111',
-             'Ole Hansen','DNB Eiendom',NULL,'Prisnedsatt','Møllenberg','7043',0),
+             'Ole Hansen','DNB Eiendom',NULL,'Prisnedsatt','Møllenberg','7043',0,
+             63.4395,10.4170),
             ('222','Elgesetergate 24',3450000,NULL,3450000,56557,NULL,NULL,
              'Leilighet','61','3','1. etasje','2026-04-01','2026-04-21',
              20,2,3450000,0,'Aktiv',
              'https://finn.no/realestate/homes/ad.html?finnkode=222',
-             NULL,NULL,NULL,'14+ dager | 2+ visninger','Elgeseter','7030',0),
+             NULL,NULL,NULL,'14+ dager | 2+ visninger','Elgeseter','7030',0,
+             63.4220,10.3950),
             ('333','Nardovegen 8',2650000,1200000,3850000,69737,4500,NULL,
              'Leilighet','38','1','3. etasje','2026-04-18','2026-04-21',
              3,0,2650000,0,'Aktiv',
              'https://finn.no/realestate/homes/ad.html?finnkode=333',
-             NULL,NULL,NULL,'Høy fellesgjeld','Nardo','7023',0),
+             NULL,NULL,NULL,'Høy fellesgjeld','Nardo','7023',0,
+             NULL,NULL),
             ('444','Nybyggvegen 1',4500000,NULL,4500000,75000,NULL,NULL,
              'Leilighet','60','3','1. etasje','2026-04-21','2026-04-21',
              0,0,4500000,0,'Aktiv',
              'https://finn.no/realestate/newbuildings/ad.html?finnkode=444',
-             NULL,NULL,NULL,NULL,'Møllenberg','7043',1);
+             NULL,NULL,NULL,NULL,'Møllenberg','7043',1,
+             63.4400,10.4180);
         INSERT INTO prishistorikk VALUES
             (1,'111','2026-04-10',3200000,3200000),
             (2,'111','2026-04-21',2990000,2990000);
@@ -84,7 +90,7 @@ def seeded_app(tmp_path):
              14,1,3100000,0,'Solgt',
              'https://finn.no/realestate/homes/ad.html?finnkode=999',
              NULL,NULL,NULL,NULL,'Rosenborg','7037',
-             '2026-04-20','Solgt',0);
+             '2026-04-20','Solgt',0,63.4310,10.4350);
         CREATE TABLE omrade_stats (
             omrade TEXT PRIMARY KEY,
             antall_aktive INTEGER DEFAULT 0,

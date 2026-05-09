@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}Kart — Boligjakten{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<link rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+<div class="layout">
+  <aside class="sidebar">
+    <h3>Filtre</h3>
+    <form id="filter-form">
+      <div class="filter-group">
+        <input type="text" name="sok" id="sok-input" class="search-input"
+               placeholder="🔍 Søk på adresse, område eller finn.no-lenke">
+      </div>
+
+      <div class="filter-group">
+        <button type="button" class="btn-toggle-full" id="btn-kun-nye"
+                onclick="toggleKunNye(this)">🆕 Vis kun nye i dag</button>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Prisantydning (kr)</div>
+        <div class="filter-row">
+          <input type="text" inputmode="numeric" class="price-input"
+                 name="prisantydning_min" placeholder="Min">
+          <span>–</span>
+          <input type="text" inputmode="numeric" class="price-input"
+                 name="prisantydning_maks" placeholder="Maks">
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Totalpris (kr)</div>
+        <div class="filter-row">
+          <input type="text" inputmode="numeric" class="price-input"
+                 name="totalpris_min" placeholder="Min">
+          <span>–</span>
+          <input type="text" inputmode="numeric" class="price-input"
+                 name="totalpris_maks" placeholder="Maks">
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Felleskost maks (kr/mnd)</div>
+        <input type="text" inputmode="numeric" class="price-input"
+               name="felleskost_maks" placeholder="Maks">
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Område</div>
+        <select name="omrade">
+          <option value="">Alle områder</option>
+          {% for o in omrader %}
+            <option value="{{ o }}">{{ o }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Størrelse (m²)</div>
+        <div class="filter-row">
+          <input type="number" name="bra_min" placeholder="Min">
+          <span>–</span>
+          <input type="number" name="bra_maks" placeholder="Maks">
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Antall rom</div>
+        <div class="btn-group">
+          {% for val, label in [('alle','Alle'),('1','1'),('2','2'),('3+','3+')] %}
+            <button type="button"
+                    class="{{ 'active' if loop.first }}"
+                    onclick="setRom(this, '{{ val }}')">{{ label }}</button>
+          {% endfor %}
+          <input type="hidden" name="rom" value="alle" id="rom-value">
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Flagg</div>
+        <div class="checkbox-list">
+          {% for flag in ['Prisnedsatt','14+ dager','2+ visninger','Høy fellesgjeld','Lav kr/m²'] %}
+            <label>
+              <input type="checkbox" name="flagg" value="{{ flag }}"> {{ flag }}
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Boligtype</div>
+        <div class="btn-group">
+          <button type="button" class="active" id="btn-brukt"
+                  onclick="toggleBoligtype(this, '0')">Brukt</button>
+          <button type="button" id="btn-nybygg"
+                  onclick="toggleBoligtype(this, '1')">Nybygg</button>
+        </div>
+        <input type="hidden" name="er_nybygg" value="0" id="er-nybygg-0">
+      </div>
+    </form>
+    <button class="btn-reset" onclick="resetFilters()">Nullstill filtre</button>
+  </aside>
+
+  <main class="main map-main">
+    <div class="map-stats" id="map-stats">Laster…</div>
+    <div id="map"></div>
+  </main>
+</div>
+
+<script>
+function formatThousands(input) {
+  const raw = input.value;
+  const caret = input.selectionStart ?? raw.length;
+  const digitsBeforeCaret = raw.slice(0, caret).replace(/\D/g, "").length;
+  const digits = raw.replace(/\D/g, "");
+  const formatted = digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  input.value = formatted;
+  let pos = 0, seen = 0;
+  while (pos < formatted.length && seen < digitsBeforeCaret) {
+    if (/\d/.test(formatted[pos])) seen++;
+    pos++;
+  }
+  input.setSelectionRange(pos, pos);
+}
+document.querySelectorAll(".price-input").forEach(el => {
+  el.addEventListener("input", () => formatThousands(el));
+});
+
+function toggleKunNye(btn) {
+  btn.classList.toggle("active");
+  const existing = document.getElementById("kun-nye-input");
+  if (btn.classList.contains("active")) {
+    if (!existing) {
+      const input = document.createElement("input");
+      input.type = "hidden"; input.name = "kun_nye"; input.value = "1";
+      input.id = "kun-nye-input";
+      document.getElementById("filter-form").appendChild(input);
+    }
+  } else if (existing) {
+    existing.remove();
+  }
+  refreshMarkers();
+}
+
+function setRom(btn, val) {
+  document.querySelectorAll('.btn-group button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('rom-value').value = val;
+  refreshMarkers();
+}
+
+function resetFilters() {
+  document.getElementById('filter-form').reset();
+  document.querySelectorAll('.btn-group button').forEach((b, i) => {
+    b.classList.toggle('active', i === 0);
+  });
+  document.getElementById('rom-value').value = 'alle';
+  const kunNyeBtn = document.getElementById('btn-kun-nye');
+  if (kunNyeBtn) kunNyeBtn.classList.remove('active');
+  const kunNyeInput = document.getElementById('kun-nye-input');
+  if (kunNyeInput) kunNyeInput.remove();
+  document.getElementById('btn-brukt').classList.add('active');
+  document.getElementById('btn-nybygg').classList.remove('active');
+  const nyInput = document.getElementById('er-nybygg-1');
+  if (nyInput) nyInput.remove();
+  if (!document.getElementById('er-nybygg-0')) {
+    const input = document.createElement('input');
+    input.type = 'hidden'; input.name = 'er_nybygg'; input.value = '0';
+    input.id = 'er-nybygg-0';
+    document.getElementById('filter-form').appendChild(input);
+  }
+  refreshMarkers();
+}
+
+function toggleBoligtype(btn, val) {
+  btn.classList.toggle('active');
+  const existingInput = document.getElementById('er-nybygg-' + val);
+  if (btn.classList.contains('active')) {
+    if (!existingInput) {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'er_nybygg'; input.value = val;
+      input.id = 'er-nybygg-' + val;
+      document.getElementById('filter-form').appendChild(input);
+    }
+  } else {
+    if (existingInput) existingInput.remove();
+  }
+  refreshMarkers();
+}
+</script>
+
+<script src="{{ url_for('static', filename='map.js') }}"></script>
+{% endblock %}

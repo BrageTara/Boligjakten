@@ -3,7 +3,7 @@
   Viser <strong>{{ listings|length }}</strong> annonser
 </p>
 {% for l in listings %}
-  {% set is_new = l.siste_sett == today_str %}
+  {% set is_new = l.forste_sett == today_str %}
   <a href="{{ url_for('detalj', finnkode=l.finnkode) }}" style="display:block;">
     <div class="listing-card {{ 'is-new' if is_new }}">
       <div class="listing-header">
@@ -26,6 +26,7 @@
             {% elif '14+' in flag %}<span class="badge badge-dager">⏱ {{ flag }}</span>
             {% elif 'visninger' in flag %}<span class="badge badge-visninger">👁 {{ flag }}</span>
             {% elif 'fellesgjeld' in flag %}<span class="badge badge-fellesgjeld">💰 {{ flag }}</span>
+            {% elif 'Lav kr/m²' in flag %}<span class="badge badge-lavkvm">💎 {{ flag }}</span>
             {% endif %}
           {% endfor %}
         {% endif %}

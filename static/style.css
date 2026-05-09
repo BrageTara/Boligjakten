@@ -24,13 +24,17 @@ a { color: inherit; text-decoration: none; }
 .filter-label { font-size: 11px; color: #64748b; margin-bottom: 5px; }
 .filter-row { display: flex; gap: 6px; align-items: center; }
 .filter-row span { color: #94a3b8; font-size: 11px; }
-input[type="number"], select { width: 100%; background: white; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; font-size: 12px; }
-.filter-row input[type="number"] { width: 70px; }
+input[type="number"], input.price-input, select { width: 100%; background: white; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; font-size: 12px; }
+.filter-row input[type="number"], .filter-row input.price-input { width: 70px; min-width: 0; }
 .btn-group { display: flex; gap: 4px; flex-wrap: wrap; }
 .btn-group button { background: white; border: 1px solid #cbd5e1; border-radius: 4px; padding: 3px 10px; font-size: 11px; cursor: pointer; }
 .btn-group button.active { background: #1e40af; color: white; border-color: #1e40af; }
 .checkbox-list { display: flex; flex-direction: column; gap: 5px; }
 .checkbox-list label { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+.search-input { width: 100%; background: white; border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px 8px; font-size: 12px; box-sizing: border-box; }
+.btn-toggle-full { width: 100%; background: white; border: 1px solid #cbd5e1; border-radius: 4px; padding: 7px; font-size: 12px; font-weight: 500; cursor: pointer; }
+.btn-toggle-full:hover { background: #f1f5f9; }
+.btn-toggle-full.active { background: #16a34a; color: white; border-color: #16a34a; }
 .btn-reset { width: 100%; background: #e2e8f0; border: none; border-radius: 4px; padding: 6px; font-size: 12px; cursor: pointer; margin-top: 8px; }
 .btn-reset:hover { background: #cbd5e1; }
 
@@ -55,6 +59,15 @@ input[type="number"], select { width: 100%; background: white; border: 1px solid
 .badge-dager { background: #fee2e2; color: #991b1b; }
 .badge-visninger { background: #fee2e2; color: #991b1b; }
 .badge-fellesgjeld { background: #fef3c7; color: #92400e; }
+.badge-lavkvm { background: #cffafe; color: #155e75; }
+
+/* ── Map page ──────────────────────────────────────────────────────────── */
+.map-main { display: flex; flex-direction: column; padding: 0; }
+.map-stats { padding: 8px 16px; font-size: 12px; color: #64748b; border-bottom: 1px solid #e2e8f0; background: white; }
+#map { flex: 1; min-height: 0; }
+.map-popup { font-size: 12px; line-height: 1.4; min-width: 200px; }
+.map-popup a { color: #1d4ed8; text-decoration: none; font-weight: 500; }
+.map-popup .badge { font-size: 10px; }
 
 /* Detail page */
 .detail-container { max-width: 720px; margin: 0 auto; padding: 24px; }
@@ -88,13 +101,17 @@ tr:hover td { background: #f8fafc; }
 /* Histogram (omrade accordion) */
 .histogram-row td { padding: 0; background: #f8fafc; }
 .histogram-wrap { padding: 16px 20px 12px; border-top: 1px solid #e2e8f0; }
-.histogram-bars { display: flex; align-items: flex-end; gap: 4px; height: 100px; position: relative; }
-.hist-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; flex: 1; min-width: 28px; height: 100%; }
+/* padding-top reserves a label band above the bars so the avg/median/Q1/current
+   line labels sit OUTSIDE the bar area instead of overlapping bars at the top */
+.histogram-bars { display: flex; align-items: flex-end; gap: 4px; height: 140px; padding-top: 56px; position: relative; }
+.hist-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; flex: 1 1 0; min-width: 0; height: 100%; }
 .hist-bar-wrap { width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 3px 3px 0 0; overflow: hidden; }
 .hist-segment { width: 100%; }
 .hist-aktiv { background: #3b82f6; }
 .hist-solgt { background: #f97316; }
 .hist-label { font-size: 9px; color: #94a3b8; margin-top: 4px; white-space: nowrap; }
+.hist-axis { position: relative; height: 16px; margin-top: 4px; }
+.hist-axis-tick { position: absolute; top: 0; transform: translateX(-50%); font-size: 10px; color: #64748b; white-space: nowrap; }
 .hist-legend { margin-top: 10px; font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px; }
 .hist-legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
 .hist-aktiv-dot { background: #3b82f6; }
@@ -121,6 +138,23 @@ tr:hover td { background: #f8fafc; }
   pointer-events: none;
   z-index: 1;
 }
+.hist-q1-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 2px dotted #0891b2;
+  pointer-events: none;
+  z-index: 1;
+}
+/* Solid (not dotted) so the listing's own kvm_pris stands out from aggregate stat lines */
+.hist-current-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 2px solid #dc2626;
+  pointer-events: none;
+  z-index: 2;
+}
 .hist-line-label {
   position: absolute;
   top: 2px;
@@ -129,7 +163,26 @@ tr:hover td { background: #f8fafc; }
   white-space: nowrap;
 }
 .hist-avg-line .hist-line-label  { color: #a855f7; }
-.hist-median-line .hist-line-label { color: #f59e0b; }
+/* Stack median + Q1 labels below avg's so they don't overlap when the values are close */
+.hist-median-line .hist-line-label { color: #f59e0b; top: 14px; }
+.hist-q1-line .hist-line-label     { color: #0891b2; top: 26px; }
+.hist-current-line .hist-line-label { color: #dc2626; top: 38px; font-weight: 600; }
+.hist-col { cursor: pointer; }
+.hist-col:hover .hist-bar-wrap { filter: brightness(1.15); }
+.hist-tooltip {
+  position: absolute;
+  display: none;
+  background: rgba(15, 23, 42, 0.95);
+  color: white;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 6px 9px;
+  border-radius: 4px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
 .omrade-row { cursor: pointer; }
 .omrade-row:hover td { background: #eff6ff; }
 

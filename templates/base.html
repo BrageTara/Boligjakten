@@ -13,6 +13,7 @@
   <span class="nav-title">🏠 Boligjakten</span>
   <div class="nav-links">
     <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' }}">Annonser</a>
+    <a href="{{ url_for('kart') }}" class="{{ 'active' if request.endpoint == 'kart' }}">Kart</a>
     <a href="{{ url_for('solgte') }}" class="{{ 'active' if request.endpoint == 'solgte' }}">Solgte</a>
     <a href="{{ url_for('omrader') }}" class="{{ 'active' if request.endpoint == 'omrader' }}">Områder</a>
     <a href="{{ url_for('prishistorikk') }}" class="{{ 'active' if request.endpoint == 'prishistorikk' }}">Prisnedsatte</a>

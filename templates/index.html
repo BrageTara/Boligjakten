@@ -20,12 +20,41 @@
           hx-trigger="change, input delay:400ms">
 
       <div class="filter-group">
-        <div class="filter-label">Pris (kr)</div>
+        <input type="text" name="sok" id="sok-input" class="search-input"
+               placeholder="🔍 Søk på adresse, område eller finn.no-lenke">
+      </div>
+
+      <div class="filter-group">
+        <button type="button" class="btn-toggle-full" id="btn-kun-nye"
+                onclick="toggleKunNye(this)">🆕 Vis kun nye i dag</button>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Prisantydning (kr)</div>
         <div class="filter-row">
-          <input type="number" name="pris_min" placeholder="Min" step="50000">
+          <input type="text" inputmode="numeric" class="price-input"
+                 name="prisantydning_min" placeholder="Min">
           <span>–</span>
-          <input type="number" name="pris_maks" placeholder="Maks" step="50000">
+          <input type="text" inputmode="numeric" class="price-input"
+                 name="prisantydning_maks" placeholder="Maks">
         </div>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Totalpris (kr)</div>
+        <div class="filter-row">
+          <input type="text" inputmode="numeric" class="price-input"
+                 name="totalpris_min" placeholder="Min">
+          <span>–</span>
+          <input type="text" inputmode="numeric" class="price-input"
+                 name="totalpris_maks" placeholder="Maks">
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-label">Felleskost maks (kr/mnd)</div>
+        <input type="text" inputmode="numeric" class="price-input"
+               name="felleskost_maks" placeholder="Maks">
       </div>
 
       <div class="filter-group">
@@ -62,7 +91,7 @@
       <div class="filter-group">
         <div class="filter-label">Flagg</div>
         <div class="checkbox-list">
-          {% for flag in ['Prisnedsatt','14+ dager','2+ visninger','Høy fellesgjeld'] %}
+          {% for flag in ['Prisnedsatt','14+ dager','2+ visninger','Høy fellesgjeld','Lav kr/m²'] %}
             <label>
               <input type="checkbox" name="flagg" value="{{ flag }}"> {{ flag }}
             </label>
@@ -114,6 +143,49 @@
 </div>
 
 <script>
+// PSEUDOCODE:
+// 1. Strip non-digits from the input
+// 2. Format with non-breaking thin spaces as thousand separators (Norwegian style)
+// 3. Restore cursor position by counting digits to the left of the original caret
+function formatThousands(input) {
+  const raw = input.value;
+  const caret = input.selectionStart ?? raw.length;
+  const digitsBeforeCaret = raw.slice(0, caret).replace(/\D/g, "").length;
+  const digits = raw.replace(/\D/g, "");
+  const formatted = digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  input.value = formatted;
+  let pos = 0, seen = 0;
+  while (pos < formatted.length && seen < digitsBeforeCaret) {
+    if (/\d/.test(formatted[pos])) seen++;
+    pos++;
+  }
+  input.setSelectionRange(pos, pos);
+}
+document.querySelectorAll(".price-input").forEach(el => {
+  el.addEventListener("input", () => formatThousands(el));
+});
+
+// PSEUDOCODE:
+// Toggle the "kun nye i dag" filter. Adds/removes a hidden input named kun_nye
+// (value=1) so the form submit either includes or omits it.
+function toggleKunNye(btn) {
+  btn.classList.toggle("active");
+  const existing = document.getElementById("kun-nye-input");
+  if (btn.classList.contains("active")) {
+    if (!existing) {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "kun_nye";
+      input.value = "1";
+      input.id = "kun-nye-input";
+      document.getElementById("filter-form").appendChild(input);
+    }
+  } else if (existing) {
+    existing.remove();
+  }
+  htmx.trigger("#filter-form", "change");
+}
+
 function setRom(btn, val) {
   document.querySelectorAll('.btn-group button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
@@ -127,6 +199,11 @@ function resetFilters() {
     b.classList.toggle('active', i === 0);
   });
   document.getElementById('rom-value').value = 'alle';
+  // Reset kun-nye toggle
+  const kunNyeBtn = document.getElementById('btn-kun-nye');
+  if (kunNyeBtn) kunNyeBtn.classList.remove('active');
+  const kunNyeInput = document.getElementById('kun-nye-input');
+  if (kunNyeInput) kunNyeInput.remove();
   // Reset boligtype — Brukt active, Nybygg inactive
   document.getElementById('btn-brukt').classList.add('active');
   document.getElementById('btn-nybygg').classList.remove('active');

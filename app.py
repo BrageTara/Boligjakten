@@ -1,7 +1,12 @@
 import os
+import threading
+import webbrowser
 from datetime import date
-from flask import Flask, render_template, request, abort
-from db import get_stats, get_listings, get_listing, get_events, get_sold_listings, get_omrade_stats, get_omrade_histogram_cached
+from flask import Flask, jsonify, render_template, request, abort
+from db import (
+    get_stats, get_listings, get_listings_with_coords, get_listing, get_events,
+    get_sold_listings, get_omrade_stats, get_omrade_histogram_cached,
+)
 
 
 # PSEUDOCODE:
@@ -37,22 +42,46 @@ def create_app(config=None):
                                omrader=omrader, today_str=str(date.today()))
 
     # PSEUDOCODE:
+    # Shared filter parser used by both /annonser and /kart/markers so the two
+    # views always agree on what each form field means.
+    def parse_filters_from_form():
+        def clean_price(name):
+            raw = request.form.get(name)
+            if not raw:
+                return None
+            digits = "".join(ch for ch in raw if ch.isdigit())
+            return digits or None
+
+        sok_raw = (request.form.get("sok") or "").strip()
+        if "finnkode=" in sok_raw:
+            tail = sok_raw.split("finnkode=", 1)[1]
+            digits = "".join(ch for ch in tail if ch.isdigit())
+            sok_raw = digits or sok_raw
+
+        return {
+            "sok":                sok_raw or None,
+            "kun_nye":            request.form.get("kun_nye") or None,
+            "omrade":             request.form.get("omrade") or None,
+            "prisantydning_min":  clean_price("prisantydning_min"),
+            "prisantydning_maks": clean_price("prisantydning_maks"),
+            "totalpris_min":      clean_price("totalpris_min"),
+            "totalpris_maks":     clean_price("totalpris_maks"),
+            "felleskost_maks":    clean_price("felleskost_maks"),
+            "bra_min":            request.form.get("bra_min") or None,
+            "bra_maks":           request.form.get("bra_maks") or None,
+            "rom":                request.form.get("rom") or None,
+            "flagg":              request.form.getlist("flagg"),
+            "status":             request.form.getlist("status") or None,
+            "er_nybygg":          request.form.getlist("er_nybygg") or None,
+        }
+
+    # PSEUDOCODE:
     # 1. Parse filter values and sort order from the POST form data
     # 2. Fetch filtered listings from the database
     # 3. Return only the listings partial HTML (for HTMX to swap in)
     @app.route("/annonser", methods=["POST"])
     def annonser():
-        filters = {
-            "omrade":    request.form.get("omrade") or None,
-            "pris_min":  request.form.get("pris_min") or None,
-            "pris_maks": request.form.get("pris_maks") or None,
-            "bra_min":   request.form.get("bra_min") or None,
-            "bra_maks":  request.form.get("bra_maks") or None,
-            "rom":       request.form.get("rom") or None,
-            "flagg":     request.form.getlist("flagg"),
-            "status":    request.form.getlist("status") or None,
-            "er_nybygg": request.form.getlist("er_nybygg") or None,
-        }
+        filters = parse_filters_from_form()
         sort = request.form.get("sort", "siste_sett_desc")
         listings = get_listings(filters, sort)
         return render_template("listings.html", listings=listings,
@@ -116,6 +145,24 @@ def create_app(config=None):
                                bins=data["bins"], max_count=data["max_count"],
                                omrade=omrade, stats=data)
 
+    # PSEUDOCODE:
+    # 1. Render the map shell with same context as / (for sidebar dropdowns)
+    @app.route("/kart")
+    def kart():
+        stats = get_stats()
+        listings = get_listings({})
+        omrader = sorted(set(l["omrade"] for l in listings if l["omrade"]))
+        return render_template("kart.html", stats=stats, omrader=omrader,
+                               today_str=str(date.today()))
+
+    # PSEUDOCODE:
+    # 1. Parse the same filter form as /annonser
+    # 2. Return slim JSON for each listing with non-NULL coordinates
+    @app.route("/kart/markers", methods=["POST"])
+    def kart_markers():
+        filters = parse_filters_from_form()
+        return jsonify(get_listings_with_coords(filters))
+
     @app.errorhandler(404)
     def not_found(e):
         return render_template("404.html"), 404
@@ -125,4 +172,6 @@ def create_app(config=None):
 
 if __name__ == "__main__":
     app = create_app()
+    if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+        threading.Timer(1.0, lambda: webbrowser.open("http://localhost:5000")).start()
     app.run(debug=True, port=5000)

@@ -79,7 +79,7 @@ python -m playwright install chromium
 ### Brainstorming before new features
 - Before writing any code for a new feature, Claude and the user must brainstorm, discuss and design the feature together.
 - Claude must NOT start writing code until the design is agreed upon.
-- Once the design is agreed, Claude writes a **to-do list** of every task needed to implement the feature and adds it to the user's Notion workspace before any code is written.
+- Once the design is agreed, Claude writes a **to-do list** of every task needed to implement the feature and adds it to `notes/tasks/` before any code is written.
 
 ### Verification before done
 - Claude must always run the code and confirm it works before reporting a task as complete.
@@ -96,13 +96,23 @@ python -m playwright install chromium
   - Split by responsibility: one file = one clear purpose (e.g. database access, scraping, routes).
   - The user has limited experience with this — Claude must explain the trade-offs clearly before any split is made.
 
-### Notion workspace
-- **Finn Tracker:** https://www.notion.so/349fea4d0c678174bb82ee157e7005ce
-- **Tasks database:** https://www.notion.so/93e6071eea9b4e3ba3e8476798469a04
-- **Design Specs:** https://www.notion.so/349fea4d0c67810a816fe5b1d729e4de
-- **Changelog:** https://www.notion.so/349fea4d0c67813eba9accb1819def8f
+### Project management workspace (Obsidian vault)
 
-When a feature is designed and approved, add all implementation tasks to the Tasks database before writing any code. Set Status to "To Do" and assign the correct Feature tag.
+Project management lives in the local Obsidian vault rooted at the project folder. The whole project folder is a vault — open it in Obsidian via *Open folder as vault*.
+
+- **Tasks** → `notes/tasks/` — one `.md` per task with frontmatter (`status`, `priority`, `feature`)
+- **Ideas** → `notes/ideas/` — one `.md` per idea with frontmatter (`status`, `priority`)
+- **Changelog** → `notes/changelog.md` — single append-only file, reverse-chronological
+- **Design specs** → `docs/superpowers/specs/` (unchanged)
+- **Plans** → `docs/superpowers/plans/` (unchanged)
+- **Daily logs** → `notes/daily/`
+- **Reference cheatsheets** → `notes/reference/`
+
+Frontmatter conventions and the full list of valid status/priority/feature values are documented in `notes/Home.md`.
+
+When a feature is designed and approved, add all implementation tasks to `notes/tasks/` before writing any code. Set `status: To Do` in the frontmatter and assign the correct `feature` tag. Number filenames in implementation order (e.g. `feature-name-1-create-table.md`, `feature-name-2-add-helper.md`).
+
+After completing meaningful work, append an entry to `notes/changelog.md` under today's date.
 
 ### Workflow reference
 - Design specs are saved in `docs/superpowers/specs/`.

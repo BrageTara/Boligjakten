@@ -78,7 +78,7 @@
     <h3 style="font-size:14px;font-weight:600;margin-top:24px;margin-bottom:10px;">
       kr/m²-fordeling — {{ listing.omrade }}
     </h3>
-    {% with bins=histogram.bins, max_count=histogram.max_count, stats=histogram %}
+    {% with bins=histogram.bins, max_count=histogram.max_count, stats=histogram, current_kvm=listing.kvm_pris %}
       {% include "omrade_histogram.html" %}
     {% endwith %}
   {% endif %}

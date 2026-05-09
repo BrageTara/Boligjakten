@@ -15,7 +15,8 @@ def get_db():
 
 # PSEUDOCODE:
 # 1. Query total active listings count
-# 2. Query listings seen today (siste_sett = today)
+# 2. Query listings first seen today (forste_sett = today) — i.e. genuinely new,
+#    not just scraped today
 # 3. Query listings with non-null flagg
 # 4. Query listings where flagg contains 'Prisnedsatt'
 # 5. Return all four as a dict
@@ -27,7 +28,7 @@ def get_stats():
         "SELECT COUNT(*) FROM annonser WHERE status = 'Aktiv'"
     ).fetchone()[0]
     nye_i_dag = c.execute(
-        "SELECT COUNT(*) FROM annonser WHERE siste_sett = ? AND status = 'Aktiv'",
+        "SELECT COUNT(*) FROM annonser WHERE forste_sett = ? AND status = 'Aktiv'",
         (today,)
     ).fetchone()[0]
     flaggede = c.execute(
@@ -46,71 +47,115 @@ def get_stats():
 
 
 # PSEUDOCODE:
-# 1. Start with base query: SELECT * FROM annonser WHERE 1=1
-# 2. For each active filter, append a WHERE clause and parameter
-# 3. For 'flagg' filter (list), append a LIKE clause per selected flag
-# 4. Apply sort order (default: siste_sett DESC)
-# 5. Return list of row dicts
-def get_listings(filters, sort="siste_sett_desc"):
-    query = "SELECT * FROM annonser WHERE 1=1"
+# Translate the filter dict into a WHERE-clause fragment + matching params list.
+# Both get_listings() and get_listings_with_coords() share this so the filter
+# semantics stay identical between list view and map view.
+def _build_where(filters):
+    where = ""
     params = []
 
     status_filter = filters.get("status")
     if status_filter:
         placeholders = ",".join("?" * len(status_filter))
-        query += f" AND status IN ({placeholders})"
+        where += f" AND status IN ({placeholders})"
         params.extend(status_filter)
     else:
-        query += " AND status = 'Aktiv'"
+        where += " AND status = 'Aktiv'"
 
     er_nybygg_filter = filters.get("er_nybygg")
     if er_nybygg_filter:
         placeholders = ",".join("?" * len(er_nybygg_filter))
-        query += f" AND er_nybygg IN ({placeholders})"
+        where += f" AND er_nybygg IN ({placeholders})"
         params.extend(int(v) for v in er_nybygg_filter)
     else:
-        query += " AND er_nybygg = 0"
+        where += " AND er_nybygg = 0"
+
+    if filters.get("kun_nye"):
+        where += " AND forste_sett = ?"
+        params.append(str(date.today()))
+
+    if filters.get("sok"):
+        like = f"%{filters['sok'].lower()}%"
+        where += (" AND (LOWER(adresse) LIKE ?"
+                  " OR LOWER(finnkode) LIKE ?"
+                  " OR LOWER(omrade) LIKE ?)")
+        params.extend([like, like, like])
 
     if filters.get("omrade"):
-        query += " AND omrade = ?"
+        where += " AND omrade = ?"
         params.append(filters["omrade"])
 
-    if filters.get("pris_min"):
-        query += " AND prisantydning >= ?"
-        params.append(int(filters["pris_min"]))
-
-    if filters.get("pris_maks"):
-        query += " AND prisantydning <= ?"
-        params.append(int(filters["pris_maks"]))
-
+    if filters.get("prisantydning_min"):
+        where += " AND prisantydning >= ?"
+        params.append(int(filters["prisantydning_min"]))
+    if filters.get("prisantydning_maks"):
+        where += " AND prisantydning <= ?"
+        params.append(int(filters["prisantydning_maks"]))
+    if filters.get("totalpris_min"):
+        where += " AND totalpris >= ?"
+        params.append(int(filters["totalpris_min"]))
+    if filters.get("totalpris_maks"):
+        where += " AND totalpris <= ?"
+        params.append(int(filters["totalpris_maks"]))
+    if filters.get("felleskost_maks"):
+        where += " AND felleskost <= ?"
+        params.append(int(filters["felleskost_maks"]))
     if filters.get("bra_min"):
-        query += " AND CAST(bra AS INTEGER) >= ?"
+        where += " AND CAST(bra AS INTEGER) >= ?"
         params.append(int(filters["bra_min"]))
-
     if filters.get("bra_maks"):
-        query += " AND CAST(bra AS INTEGER) <= ?"
+        where += " AND CAST(bra AS INTEGER) <= ?"
         params.append(int(filters["bra_maks"]))
 
     rom = filters.get("rom")
     if rom and rom != "alle":
         if rom == "3+":
-            query += " AND CAST(rom AS INTEGER) >= 3"
+            where += " AND CAST(rom AS INTEGER) >= 3"
         else:
-            query += " AND CAST(rom AS INTEGER) = ?"
+            where += " AND CAST(rom AS INTEGER) = ?"
             params.append(int(rom))
 
     for flag in filters.get("flagg", []):
-        query += " AND flagg LIKE ?"
+        where += " AND flagg LIKE ?"
         params.append(f"%{flag}%")
 
+    return where, params
+
+
+# PSEUDOCODE:
+# 1. Build WHERE clause via _build_where
+# 2. Apply sort order (default: siste_sett DESC)
+# 3. Return list of row dicts
+def get_listings(filters, sort="siste_sett_desc"):
+    where, params = _build_where(filters)
     sort_map = {
         "siste_sett_desc": "siste_sett DESC",
         "prisantydning_asc": "prisantydning ASC",
         "prisantydning_desc": "prisantydning DESC",
         "dager_ute_desc": "dager_ute DESC",
     }
-    query += f" ORDER BY {sort_map.get(sort, 'siste_sett DESC')}"
+    query = (
+        "SELECT * FROM annonser WHERE 1=1" + where
+        + f" ORDER BY {sort_map.get(sort, 'siste_sett DESC')}"
+    )
 
+    conn = get_db()
+    rows = [dict(r) for r in conn.execute(query, params).fetchall()]
+    conn.close()
+    return rows
+
+
+# PSEUDOCODE:
+# Same filter contract as get_listings, but only returns rows with coords + a
+# slim column set suitable for sending as JSON to the map page.
+def get_listings_with_coords(filters):
+    where, params = _build_where(filters)
+    query = (
+        "SELECT finnkode, adresse, omrade, lat, lon, prisantydning, totalpris,"
+        " kvm_pris, bra, rom, flagg"
+        " FROM annonser"
+        " WHERE 1=1 AND lat IS NOT NULL AND lon IS NOT NULL" + where
+    )
     conn = get_db()
     rows = [dict(r) for r in conn.execute(query, params).fetchall()]
     conn.close()
@@ -132,18 +177,21 @@ def get_omrade_histogram_cached(omrade):
         return None
     raw = json.loads(row["histogram_json"])
     # Handle both old format (plain list) and new format (dict with "bins" key)
+    keys = ("bin_start", "brukt_avg", "brukt_median", "brukt_q1",
+            "ny_avg", "ny_median", "ny_q1",
+            "alle_avg", "alle_median", "alle_q1")
     if isinstance(raw, list):
         bins = raw
-        extra = {"bin_start": None, "brukt_avg": None, "brukt_median": None,
-                 "ny_avg": None, "ny_median": None, "alle_avg": None, "alle_median": None}
+        extra = {k: None for k in keys}
     else:
         bins = raw.get("bins", [])
-        extra = {k: raw.get(k) for k in
-                 ("bin_start", "brukt_avg", "brukt_median", "ny_avg", "ny_median", "alle_avg", "alle_median")}
+        extra = {k: raw.get(k) for k in keys}
+    # Histogram only renders brukt aktive/solgte (nybygg segments are excluded
+     # from the chart), so size bars relative to the max brukt count per bin.
     max_count = max(
-        (b.get("aktive", 0) + b.get("solgte", 0) + b.get("ny_aktive", 0) + b.get("ny_solgte", 0))
-        for b in bins
+        (b.get("aktive", 0) + b.get("solgte", 0)) for b in bins
     ) if bins else 1
+    max_count = max(max_count, 1)
     return {"bins": bins, "max_count": max_count, **extra}
 
 

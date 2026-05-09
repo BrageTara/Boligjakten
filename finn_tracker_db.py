@@ -64,7 +64,9 @@ def init_db():
             flagg           TEXT,
             omrade          TEXT,
             postnummer      TEXT,
-            er_nybygg       INTEGER DEFAULT 0
+            er_nybygg       INTEGER DEFAULT 0,
+            lat             REAL,
+            lon             REAL
         )
     """)
 
@@ -108,7 +110,9 @@ def init_db():
             postnummer      TEXT,
             er_nybygg       INTEGER DEFAULT 0,
             solgt_dato      DATE,
-            arsak           TEXT
+            arsak           TEXT,
+            lat             REAL,
+            lon             REAL
         )
     """)
 
@@ -119,6 +123,20 @@ def init_db():
             dato      DATE NOT NULL,
             type      TEXT NOT NULL,
             detaljer  TEXT
+        )
+    """)
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS run_log (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at      TIMESTAMP NOT NULL,
+            finished_at     TIMESTAMP,
+            status          TEXT NOT NULL DEFAULT 'running',
+            total_in_search INTEGER DEFAULT 0,
+            new_count       INTEGER DEFAULT 0,
+            updated_count   INTEGER DEFAULT 0,
+            sold_count      INTEGER DEFAULT 0,
+            error_message   TEXT
         )
     """)
 
@@ -150,6 +168,14 @@ def init_db():
         c.execute("ALTER TABLE solgte ADD COLUMN er_nybygg INTEGER DEFAULT 0")
     except Exception:
         pass  # Column already exists
+
+    # Migration: add lat/lon for the interactive map
+    for table in ("annonser", "solgte"):
+        for col in ("lat", "lon"):
+            try:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN {col} REAL")
+            except Exception:
+                pass  # Column already exists
 
     # Migration: convert prishistorikk → hendelser (one-time)
     migrate_prishistorikk_to_hendelser(conn)
@@ -223,6 +249,50 @@ def migrate_prishistorikk_to_hendelser(conn):
 # 6. Insert one row per area with histogram_json storing bins + avg/median stats as a dict
 # 7. Commit
 # Requires: init_db() must have been called before this function.
+LAV_KVM_LABEL = "Lav kr/m²"
+
+
+# PSEUDOCODE:
+# 1. Read each area's alle_q1 (lower quartile) from omrade_stats
+# 2. For each active listing, recompute its flag string:
+#    - Drop any existing "Lav kr/m²" first
+#    - If kvm_pris is known and below the area's Q1, add "Lav kr/m²" back
+# 3. Write back any rows whose flagg actually changed
+# Must be called AFTER update_omrade_stats since it depends on the freshly
+# computed Q1 values.
+def update_lav_kvm_flag(conn):
+    c = conn.cursor()
+    q1_per_area = {}
+    for omrade, hjson in c.execute(
+        "SELECT omrade, histogram_json FROM omrade_stats"
+    ).fetchall():
+        try:
+            data = json.loads(hjson or "{}")
+        except Exception:
+            continue
+        q1 = data.get("alle_q1")
+        if q1 is not None:
+            q1_per_area[omrade] = q1
+
+    rows = c.execute(
+        "SELECT finnkode, omrade, kvm_pris, flagg FROM annonser WHERE status = 'Aktiv'"
+    ).fetchall()
+    updates = []
+    for finnkode, omrade, kvm_pris, flagg in rows:
+        existing = [f.strip() for f in (flagg or "").split("|") if f.strip()]
+        existing = [f for f in existing if f != LAV_KVM_LABEL]
+        q1 = q1_per_area.get(omrade)
+        if kvm_pris is not None and q1 is not None and kvm_pris < q1:
+            existing.append(LAV_KVM_LABEL)
+        new_flagg = " | ".join(existing) if existing else None
+        if new_flagg != flagg:
+            updates.append((new_flagg, finnkode))
+    if updates:
+        c.executemany("UPDATE annonser SET flagg = ? WHERE finnkode = ?", updates)
+        conn.commit()
+    print(f"  '{LAV_KVM_LABEL}' flag oppdatert for {len(updates)} annonser")
+
+
 def update_omrade_stats(conn):
     BIN_SIZE = 2000
     today = str(date.today())
@@ -277,43 +347,73 @@ def update_omrade_stats(conn):
         else:
             entry["solgte"].append(kvm)
 
-    # Build histogram bins and return (bins, bin_start).
-    # bin_start is the lowest bin's starting kr/m² value, needed for line positioning.
-    def build_bins(aktive, solgte, ny_aktive, ny_solgte):
-        # Cap outliers — values above 200k kr/m² are almost certainly data errors
-        KVM_MAX = 200_000
-        aktive    = [x for x in aktive    if x <= KVM_MAX]
-        solgte    = [x for x in solgte    if x <= KVM_MAX]
-        ny_aktive = [x for x in ny_aktive if x <= KVM_MAX]
-        ny_solgte = [x for x in ny_solgte if x <= KVM_MAX]
+    # Drop outliers up-front. Two layers of protection:
+    #   1. Hard cap at 200k kr/m² — anything above is a clear data error.
+    #   2. Per-area 99th-percentile cap — trims the long thin tail so the
+    #      histogram's x-axis stays tight around real data and bins are
+    #      readable. Only kicks in when there are enough rows to estimate.
+    KVM_MAX = 200_000
+    for entry in stats.values():
+        for key in ("aktive", "solgte", "ny_aktive", "ny_solgte"):
+            entry[key] = [x for x in entry[key] if x <= KVM_MAX]
+        all_vals = entry["aktive"] + entry["solgte"] + entry["ny_aktive"] + entry["ny_solgte"]
+        if len(all_vals) >= 20:
+            # 98th percentile drops the long thin tail (sparse outlier clusters
+            # like a handful of listings at the top of the price range that
+            # would otherwise stretch the x-axis and squash the main bars).
+            cap = sorted(all_vals)[int(len(all_vals) * 0.98)]
+            for key in ("aktive", "solgte", "ny_aktive", "ny_solgte"):
+                entry[key] = [x for x in entry[key] if x <= cap]
 
+    # Compute a global x-axis range so all area histograms share the same
+    # start/end on screen. Makes it easy to compare distributions across areas.
+    global_vals = []
+    for entry in stats.values():
+        global_vals.extend(entry["aktive"] + entry["solgte"] + entry["ny_aktive"] + entry["ny_solgte"])
+    if global_vals:
+        global_min = (min(global_vals) // BIN_SIZE) * BIN_SIZE
+        global_max = (max(global_vals) // BIN_SIZE) * BIN_SIZE
+    else:
+        global_min = global_max = 0
+
+    # Build histogram bins. Uses the GLOBAL min/max so every area renders on
+    # the same x-axis; areas with narrower data simply have empty trailing or
+    # leading bins. bin_start is needed for the avg/median line positioning.
+    def build_bins(aktive, solgte, ny_aktive, ny_solgte):
         all_vals = aktive + solgte + ny_aktive + ny_solgte
         if not all_vals:
             return [], None
-        bin_min = (min(all_vals) // BIN_SIZE) * BIN_SIZE
 
-        # Direct binning: assign each value to its bin in one pass (O(n))
         counts = {}
         for lst_idx, lst in enumerate([aktive, solgte, ny_aktive, ny_solgte]):
             for x in lst:
-                bin_idx = (x - bin_min) // BIN_SIZE
+                bin_idx = (x - global_min) // BIN_SIZE
                 if bin_idx not in counts:
                     counts[bin_idx] = [0, 0, 0, 0]
                 counts[bin_idx][lst_idx] += 1
 
-        # Only iterate over bins that have data — immune to outlier range issues
+        # Emit DENSE bins covering [global_min, global_max] — empty bins are zero.
+        # Linear price axis is required for the avg/median dotted lines to land in
+        # the right place; shared range across areas makes them comparable.
+        bin_count = (global_max - global_min) // BIN_SIZE + 1
         bins = []
-        for bin_idx in sorted(counts.keys()):
-            v = bin_min + bin_idx * BIN_SIZE
-            c = counts[bin_idx]
+        for bin_idx in range(bin_count):
+            v = global_min + bin_idx * BIN_SIZE
+            c = counts.get(bin_idx, [0, 0, 0, 0])
             bins.append({"label": f"{v // 1000}k", "aktive": c[0], "solgte": c[1], "ny_aktive": c[2], "ny_solgte": c[3]})
-        return bins, bin_min
+        return bins, global_min
 
     def calc_avg(vals):
         return round(sum(vals) / len(vals)) if vals else None
 
     def calc_median(vals):
         return round(statistics.median(vals)) if vals else None
+
+    def calc_q1(vals):
+        # Need at least 2 values for statistics.quantiles
+        if not vals or len(vals) < 2:
+            return None
+        return round(statistics.quantiles(vals, n=4)[0])
 
     print(f"  [4/4] Skriver statistikk for {len(stats)} områder...")
     c.execute("DELETE FROM omrade_stats")
@@ -329,10 +429,13 @@ def update_omrade_stats(conn):
             "bin_start": bin_start,
             "brukt_avg":    calc_avg(brukt),
             "brukt_median": calc_median(brukt),
+            "brukt_q1":     calc_q1(brukt),
             "ny_avg":       calc_avg(nybygg),
             "ny_median":    calc_median(nybygg),
+            "ny_q1":        calc_q1(nybygg),
             "alle_avg":     calc_avg(all_kvm),
             "alle_median":  calc_median(all_kvm),
+            "alle_q1":      calc_q1(all_kvm),
         }
         c.execute("""
             INSERT INTO omrade_stats
@@ -445,13 +548,15 @@ def upsert_listing(conn, finnkode, ad, today, existing=None):
             felleskost, fellesformue, type, bra, rom, etasje,
             forste_sett, siste_sett, dager_ute, antall_visninger,
             pris_ved_start, prisendring, status, url,
-            megler, meglerkontor, neste_visning, flagg, omrade, postnummer, er_nybygg
+            megler, meglerkontor, neste_visning, flagg, omrade, postnummer, er_nybygg,
+            lat, lon
         ) VALUES (
             :finnkode, :adresse, :prisantydning, :fellesgjeld, :totalpris, :kvm_pris,
             :felleskost, :fellesformue, :type, :bra, :rom, :etasje,
             :forste_sett, :siste_sett, :dager_ute, :antall_visninger,
             :pris_ved_start, :prisendring, :status, :url,
-            :megler, :meglerkontor, :neste_visning, :flagg, :omrade, :postnummer, :er_nybygg
+            :megler, :meglerkontor, :neste_visning, :flagg, :omrade, :postnummer, :er_nybygg,
+            :lat, :lon
         )
         ON CONFLICT(finnkode) DO UPDATE SET
             adresse         = excluded.adresse,
@@ -476,7 +581,9 @@ def upsert_listing(conn, finnkode, ad, today, existing=None):
             flagg           = excluded.flagg,
             omrade          = excluded.omrade,
             postnummer      = excluded.postnummer,
-            er_nybygg       = excluded.er_nybygg
+            er_nybygg       = excluded.er_nybygg,
+            lat             = COALESCE(excluded.lat, annonser.lat),
+            lon             = COALESCE(excluded.lon, annonser.lon)
     """, {
         "finnkode":         finnkode,
         "adresse":          ad.get("adresse"),
@@ -505,6 +612,8 @@ def upsert_listing(conn, finnkode, ad, today, existing=None):
         "omrade":           ad.get("omrade"),
         "postnummer":       ad.get("postnummer"),
         "er_nybygg":        ad.get("er_nybygg", 0),
+        "lat":              ad.get("lat"),
+        "lon":              ad.get("lon"),
     })
 
 
@@ -541,14 +650,14 @@ def mark_sold(conn, finnkode, today, arsak):
             forste_sett, siste_sett, dager_ute, antall_visninger,
             pris_ved_start, prisendring, status, url,
             megler, meglerkontor, neste_visning, flagg, omrade, postnummer,
-            er_nybygg, solgt_dato, arsak
+            er_nybygg, solgt_dato, arsak, lat, lon
         ) VALUES (
             :finnkode, :adresse, :prisantydning, :fellesgjeld, :totalpris, :kvm_pris,
             :felleskost, :fellesformue, :type, :bra, :rom, :etasje,
             :forste_sett, :siste_sett, :dager_ute, :antall_visninger,
             :pris_ved_start, :prisendring, :status, :url,
             :megler, :meglerkontor, :neste_visning, :flagg, :omrade, :postnummer,
-            :er_nybygg, :solgt_dato, :arsak
+            :er_nybygg, :solgt_dato, :arsak, :lat, :lon
         )
     """, {**row, "solgt_dato": str(today), "arsak": arsak})
 
@@ -577,6 +686,15 @@ def main():
     init_db()
     conn = get_conn()
 
+    # Log the start of this run
+    run_started = datetime.now()
+    conn.execute(
+        "INSERT INTO run_log (started_at, status) VALUES (?, 'running')",
+        (run_started.isoformat(),),
+    )
+    conn.commit()
+    run_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
@@ -593,6 +711,11 @@ def main():
             listings = fetch_all_listings(pg)
         except Exception as e:
             print(f"FEIL ved henting av søkeside: {e}")
+            conn.execute(
+                "UPDATE run_log SET finished_at=?, status='failed', error_message=? WHERE id=?",
+                (datetime.now().isoformat(), str(e), run_id),
+            )
+            conn.commit()
             browser.close()
             conn.close()
             return
@@ -643,6 +766,23 @@ def main():
                 update_omrade_stats(conn)
             except Exception as e:
                 print(f"  ADVARSEL: update_omrade_stats feilet: {e}")
+            try:
+                update_lav_kvm_flag(conn)
+            except Exception as e:
+                print(f"  ADVARSEL: update_lav_kvm_flag feilet: {e}")
+
+            # Log the completed run
+            conn.execute(
+                """UPDATE run_log
+                   SET finished_at=?, status='success',
+                       total_in_search=?, new_count=?,
+                       updated_count=?, sold_count=?
+                   WHERE id=?""",
+                (datetime.now().isoformat(), len(listings),
+                 new_count, updated_count, sold_count, run_id),
+            )
+            conn.commit()
+
             browser.close()
             conn.close()
             print(f"\n=== Ferdig ===")

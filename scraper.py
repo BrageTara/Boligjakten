@@ -206,6 +206,15 @@ def scrape_ad(page, url):
     if m_name:
         data["megler"] = m_name.group(1)
 
+    # Coordinates: Finn embeds them in a mapUrl (~6 decimals = ~10 cm precision).
+    # Falls back to None for tomtekjøp / hidden-address listings.
+    data["lat"] = None
+    data["lon"] = None
+    m_coord = re.search(r'lat=(-?\d+\.\d+)&lon=(-?\d+\.\d+)', html)
+    if m_coord:
+        data["lat"] = float(m_coord.group(1))
+        data["lon"] = float(m_coord.group(2))
+
     # Postnummer
     # PSEUDOCODE:
     # 1. Try DOM label <dt>Postnummer</dt> — most reliable.

@@ -1,5 +1,5 @@
 import pytest
-from db import get_stats, get_listings, get_listing, get_price_history, get_sold_listings
+from db import get_stats, get_listings, get_listings_with_coords, get_listing, get_price_history, get_sold_listings
 
 
 def test_get_stats_returns_expected_keys(seeded_app):
@@ -50,10 +50,76 @@ def test_get_listings_filter_by_omrade(seeded_app):
     assert rows[0]["finnkode"] == "111"
 
 
-def test_get_listings_filter_by_pris(seeded_app):
+def test_get_listings_filter_by_prisantydning(seeded_app):
     with seeded_app.app_context():
-        rows = get_listings({"pris_maks": 3000000})
-    assert len(rows) == 2
+        rows = get_listings({"prisantydning_maks": 3000000})
+    assert len(rows) == 2  # 111 (2.99M) and 333 (2.65M); 222 (3.45M) excluded
+
+
+def test_get_listings_filter_by_totalpris(seeded_app):
+    # Listing 333 has prisantydning=2.65M but totalpris=3.85M (1.2M fellesgjeld),
+    # so totalpris_maks must exclude it where prisantydning_maks would not.
+    with seeded_app.app_context():
+        rows = get_listings({"totalpris_maks": 3000000})
+    finnkoder = {r["finnkode"] for r in rows}
+    assert finnkoder == {"111"}
+
+
+def test_get_listings_filter_by_prisantydning_and_totalpris(seeded_app):
+    with seeded_app.app_context():
+        rows = get_listings({
+            "prisantydning_min": 2000000,
+            "prisantydning_maks": 3000000,
+            "totalpris_maks": 3000000,
+        })
+    finnkoder = {r["finnkode"] for r in rows}
+    assert finnkoder == {"111"}
+
+
+def test_get_listings_filter_sok_by_address(seeded_app):
+    with seeded_app.app_context():
+        rows = get_listings({"sok": "elgeseter"})
+    finnkoder = {r["finnkode"] for r in rows}
+    assert finnkoder == {"222"}  # adresse: Elgesetergate 24
+
+
+def test_get_listings_filter_sok_by_finnkode(seeded_app):
+    with seeded_app.app_context():
+        rows = get_listings({"sok": "333"})
+    finnkoder = {r["finnkode"] for r in rows}
+    assert finnkoder == {"333"}
+
+
+def test_get_listings_filter_sok_by_omrade(seeded_app):
+    # 444 is nybygg, so include both er_nybygg values
+    with seeded_app.app_context():
+        rows = get_listings({"sok": "møllenberg", "er_nybygg": ["0", "1"]})
+    finnkoder = {r["finnkode"] for r in rows}
+    assert finnkoder == {"111", "444"}  # both in Møllenberg
+
+
+def test_get_listings_filter_by_felleskost(seeded_app):
+    # Seed: 111 felleskost=3200, 333 felleskost=4500, 222 + 444 are NULL.
+    # NULL rows must be excluded — user setting a max can't make claims about unknowns.
+    with seeded_app.app_context():
+        rows = get_listings({"felleskost_maks": 4000})
+    finnkoder = {r["finnkode"] for r in rows}
+    assert finnkoder == {"111"}
+
+
+def test_get_listings_filter_kun_nye(seeded_app, monkeypatch):
+    # Pin "today" to a known date and seed listing 444 has forste_sett=2026-04-21
+    import db
+    from datetime import date
+    class FakeDate(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 4, 21)
+    monkeypatch.setattr(db, "date", FakeDate)
+    with seeded_app.app_context():
+        rows = get_listings({"kun_nye": "1", "er_nybygg": ["0", "1"]})
+    finnkoder = {r["finnkode"] for r in rows}
+    assert finnkoder == {"444"}  # only 444 has forste_sett == 2026-04-21
 
 
 def test_get_listings_filter_by_flagg(seeded_app):
@@ -159,6 +225,121 @@ def test_update_omrade_stats_histogram_json_includes_avg_median_bin_start():
     # alle = [80000, 120000, 100000, 140000] → avg=110000, median=110000
     assert data["alle_avg"] == 110000
     assert data["alle_median"] == 110000
+
+    # statistics.quantiles uses exclusive method by default
+    # alle [80000,100000,120000,140000] → Q1 = 85000
+    assert data["alle_q1"] == 85000
+    # brukt [80000,100000,120000] → Q1 = 80000
+    assert data["brukt_q1"] == 80000
+    # nybygg has only 1 value → q1 is None (needs >=2)
+    assert data["ny_q1"] is None
+
+    conn.close()
+
+
+def test_get_listings_with_coords_excludes_null_coords(seeded_app):
+    # Listing 333 has NULL lat/lon, so should be filtered out.
+    with seeded_app.app_context():
+        rows = get_listings_with_coords({})
+    finnkoder = {r["finnkode"] for r in rows}
+    assert "333" not in finnkoder
+    assert {"111", "222"}.issubset(finnkoder)
+    # Slim columns: ensure we got the map-relevant fields and not e.g. fellesgjeld
+    sample = rows[0]
+    for col in ("finnkode", "adresse", "lat", "lon", "kvm_pris", "flagg"):
+        assert col in sample
+    assert "fellesgjeld" not in sample
+
+
+def test_get_listings_with_coords_applies_filters(seeded_app):
+    # prisantydning_maks=3000000 → 111 (2.99M) only (333 excluded by null coords;
+    # 222 is 3.45M; 444 is 4.5M and nybygg)
+    with seeded_app.app_context():
+        rows = get_listings_with_coords({"prisantydning_maks": 3000000})
+    finnkoder = {r["finnkode"] for r in rows}
+    assert finnkoder == {"111"}
+
+
+def test_update_lav_kvm_flag_adds_and_removes_label():
+    from finn_tracker_db import update_omrade_stats, update_lav_kvm_flag
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
+        CREATE TABLE annonser (
+            finnkode TEXT, omrade TEXT, totalpris INTEGER, bra TEXT, kvm_pris INTEGER,
+            er_nybygg INTEGER DEFAULT 0, status TEXT, flagg TEXT
+        );
+        CREATE TABLE solgte (
+            finnkode TEXT, omrade TEXT, totalpris INTEGER, bra TEXT,
+            er_nybygg INTEGER DEFAULT 0, solgt_dato DATE
+        );
+        CREATE TABLE omrade_stats (
+            omrade TEXT PRIMARY KEY, antall_aktive INTEGER DEFAULT 0,
+            antall_solgte INTEGER DEFAULT 0, snitt_kvm_pris INTEGER,
+            min_kvm_pris INTEGER, max_kvm_pris INTEGER,
+            histogram_json TEXT, oppdatert DATE
+        );
+    """)
+    # 4 listings in same area: 60k, 70k, 80k, 90k → Q1 = 67.5k
+    # So only the 60k listing should be flagged
+    conn.execute("INSERT INTO annonser VALUES ('A','Z',3000000,'50',60000,0,'Aktiv','Prisnedsatt')")
+    conn.execute("INSERT INTO annonser VALUES ('B','Z',3500000,'50',70000,0,'Aktiv',NULL)")
+    conn.execute("INSERT INTO annonser VALUES ('C','Z',4000000,'50',80000,0,'Aktiv','Lav kr/m²')")  # stale flag
+    conn.execute("INSERT INTO annonser VALUES ('D','Z',4500000,'50',90000,0,'Aktiv',NULL)")
+    conn.commit()
+
+    update_omrade_stats(conn)
+    update_lav_kvm_flag(conn)
+
+    flags = {r[0]: r[1] for r in conn.execute("SELECT finnkode, flagg FROM annonser").fetchall()}
+    assert flags["A"] == "Prisnedsatt | Lav kr/m²"  # added
+    assert flags["B"] is None  # not below Q1, no other flags
+    assert flags["C"] is None  # stale flag removed (kvm 80k > Q1 67.5k)
+    assert flags["D"] is None
+    conn.close()
+
+
+def test_update_omrade_stats_excludes_outliers_from_avg_and_median():
+    # Regression: if a single corrupt row produced a kvm_pris > 200k, it would
+    # skew the area's avg by orders of magnitude. Ensure outliers are dropped
+    # from the same lists used for both histogram and avg/median.
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
+        CREATE TABLE annonser (
+            finnkode TEXT, omrade TEXT, totalpris INTEGER, bra TEXT,
+            er_nybygg INTEGER DEFAULT 0, status TEXT
+        );
+        CREATE TABLE solgte (
+            finnkode TEXT, omrade TEXT, totalpris INTEGER, bra TEXT,
+            er_nybygg INTEGER DEFAULT 0, solgt_dato DATE
+        );
+        CREATE TABLE omrade_stats (
+            omrade TEXT PRIMARY KEY, antall_aktive INTEGER DEFAULT 0,
+            antall_solgte INTEGER DEFAULT 0, snitt_kvm_pris INTEGER,
+            min_kvm_pris INTEGER, max_kvm_pris INTEGER,
+            histogram_json TEXT, oppdatert DATE
+        );
+    """)
+    # Two valid rows + one corrupt outlier (totalpris=10**13 / 50 = 2*10^11)
+    conn.execute("INSERT INTO annonser VALUES ('A','Out',4000000,'50',0,'Aktiv')")    # 80000
+    conn.execute("INSERT INTO annonser VALUES ('B','Out',5000000,'50',0,'Aktiv')")    # 100000
+    conn.execute("INSERT INTO annonser VALUES ('X','Out',10000000000000,'50',0,'Aktiv')")  # 2*10^11 — outlier
+    conn.commit()
+
+    update_omrade_stats(conn)
+
+    row = conn.execute("SELECT snitt_kvm_pris, max_kvm_pris, histogram_json FROM omrade_stats WHERE omrade='Out'").fetchone()
+    data = _json.loads(row["histogram_json"])
+
+    # Avg and median must reflect ONLY the two valid rows
+    assert data["alle_avg"] == 90000
+    assert data["alle_median"] == 90000
+    assert data["brukt_avg"] == 90000
+    # Top-level snitt/max must also exclude the outlier
+    assert row["snitt_kvm_pris"] == 90000
+    assert row["max_kvm_pris"] == 100000
 
     conn.close()
 
