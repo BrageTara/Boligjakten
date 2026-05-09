@@ -20,27 +20,27 @@ POSTNUMMER = {
     "7010": "Midtbyen",       "7011": "Midtbyen",       "7012": "Singsaker",
     "7013": "Øya",            "7014": "Midtbyen",       "7015": "Tempe",
     "7016": "Midtbyen",       "7017": "Midtbyen",       "7018": "Ila",
-    "7019": "Midtbyen",       "7020": "Trondheim",      "7021": "Byåsen",
+    "7019": "Midtbyen",       "7020": "Hallset",        "7021": "Byåsen",
     "7022": "Byåsen",         "7023": "Nardo",          "7024": "Stavne",
-    "7025": "Brundalen",      "7026": "Trondheim",      "7027": "Lademoen",
-    "7028": "Bromstad",       "7029": "Trondheim",      "7030": "Elgeseter",
-    "7031": "Elgeseter",      "7032": "Trondheim",      "7033": "Risvollan",
-    "7034": "Moholt",         "7035": "Trondheim",      "7036": "Trondheim",
-    "7037": "Rosenborg",      "7038": "Trondheim",      "7039": "Trondheim",
-    "7040": "Trondheim",      "7041": "Nedre Lade",     "7042": "Øvre Lade",
+    "7025": "Brundalen",      "7026": "Stavset",        "7027": "Lademoen",
+    "7028": "Bromstad",       "7029": "Romolslia",      "7030": "Elgeseter",
+    "7031": "Elgeseter",      "7032": "Nardo",          "7033": "Risvollan",
+    "7034": "Moholt",         "7035": "Sørlig Nardo",   "7036": "Risvollan",
+    "7037": "Rosenborg",      "7038": "Fossegrenda",    "7039": "Bratsberg",
+    "7040": "Lade",           "7041": "Nedre Lade",     "7042": "Øvre Lade",
     "7043": "Møllenberg",     "7044": "Nedre Elvehavn", "7045": "Trolla",
-    "7046": "Trondheim",      "7047": "Trondheim",      "7048": "Strindheim",
-    "7049": "Vikåsen",        "7050": "Trondheim",      "7051": "Charlottenlund",
-    "7052": "Trondheim",
+    "7046": "Strindheim",     "7047": "Brundalen",      "7048": "Strindheim",
+    "7049": "Vikåsen",        "7050": "Moholt",         "7051": "Charlottenlund",
+    "7052": "Tyholt",
     # Øst / Ranheim
     "7053": "Ranheim",        "7054": "Ranheim",        "7055": "Ranheim",
     "7056": "Ranheim",        "7057": "Jonsvatnet",     "7058": "Jakobsli",
     "7059": "Jakobsli",
-    # Klæbu (del av Trondheim kommune fra 2020)
-    "7060": "Klæbu",          "7066": "Trondheim",      "7067": "Trondheim",
-    "7068": "Trondheim",      "7069": "Trondheim",
+    # Leangen / Klæbu (del av Trondheim kommune fra 2020)
+    "7060": "Klæbu",          "7061": "Leangen",        "7066": "Lilleby",
+    "7067": "Lademoen",       "7068": "Møllenberg",     "7069": "Brøset",
     # Sør / Heimdal / Tiller
-    "7070": "Bosberg",        "7071": "Trondheim",      "7072": "Heimdal",
+    "7070": "Bosberg",        "7071": "Ugla",           "7072": "Heimdal",
     "7074": "Spongdal",       "7075": "Tiller",         "7078": "Saupstad",
     "7079": "Flatåsen",       "7080": "Heimdal",        "7081": "Sjetnemarka",
     "7082": "Kattem",         "7083": "Leinstrand",     "7088": "Heimdal",
@@ -207,7 +207,20 @@ def scrape_ad(page, url):
         data["megler"] = m_name.group(1)
 
     # Postnummer
+    # PSEUDOCODE:
+    # 1. Try DOM label <dt>Postnummer</dt> — most reliable.
+    # 2. Try "<pnr> <known Trondheim area>" pattern in HTML — only matches
+    #    when postcode is followed by a city name we already know.
+    # 3. Try JSON fields like "postCode": "NNNN" — but constrained to
+    #    Trondheim-region (70xx or 7540-7549) so we don't pick up megler
+    #    office postcodes from elsewhere in Norway.
+    # 4. Reject any final candidate that isn't a Trondheim-kommune postcode.
+    #    Genuine new Trondheim postcodes still surface as "Ukjent (NNNN)".
     pnr = None
+
+    def _is_trondheim_pnr(p):
+        return p.startswith("70") or p in ("7540", "7541", "7548", "7549")
+
     pnr_raw = find_val("Postnummer") or find_val("postnummer")
     if pnr_raw:
         m = re.search(r"\b(\d{4})\b", pnr_raw)
@@ -215,24 +228,26 @@ def scrape_ad(page, url):
             pnr = m.group(1)
 
     if not pnr:
-        for field in ("postCode", "zipCode", "zip_code", "postal_code",
-                      "postalCode", "postcode", "zip"):
-            m = re.search(rf'"{field}"\s*:\s*"?(\d{{4}})"?', html)
-            if m:
-                pnr = m.group(1)
+        cities = sorted(set(POSTNUMMER.values()), key=len, reverse=True)
+        cities_re = "|".join(re.escape(c) for c in cities)
+        for m in re.finditer(rf"\b(\d{{4}})\s+(?:{cities_re})\b", html):
+            candidate = m.group(1)
+            if _is_trondheim_pnr(candidate):
+                pnr = candidate
                 break
 
     if not pnr:
-        m = re.search(r"\b(\d{4})\s+[A-ZÆØÅ]{2,}", html)
-        if m:
-            pnr = m.group(1)
+        for field in ("postCode", "zipCode", "zip_code", "postal_code",
+                      "postalCode", "postcode", "zip"):
+            for m in re.finditer(rf'"{field}"\s*:\s*"?(\d{{4}})"?', html):
+                candidate = m.group(1)
+                if _is_trondheim_pnr(candidate):
+                    pnr = candidate
+                    break
+            if pnr:
+                break
 
-    if not pnr:
-        m = re.search(r"\b(\d{4})\s+[A-ZÆØÅ][a-zA-ZæøåÆØÅ]+", html)
-        if m:
-            pnr = m.group(1)
-
-    if pnr and not (1000 <= int(pnr) <= 9999):
+    if pnr and not _is_trondheim_pnr(pnr):
         pnr = None
 
     data["postnummer"] = pnr
